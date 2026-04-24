@@ -3,11 +3,22 @@ interface UnifiedImage {
   data: string
 }
 
+const MAX_KIRO_IMAGES = 4
+const MAX_KIRO_IMAGE_BYTES = 3_750_000
+
 interface KiroImage {
   format: string
   source: {
-    bytes: string
+    bytes: Uint8Array
   }
+}
+
+/** Decode base64 to a plain Uint8Array (NOT Buffer) to avoid Buffer.toJSON() trap. */
+function base64ToUint8Array(b64: string): Uint8Array {
+  const bin = atob(b64)
+  const arr = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i)
+  return arr
 }
 
 function extractImagesFromAnthropicFormat(content: any[]): UnifiedImage[] {
@@ -59,17 +70,29 @@ export function extractAllImages(content: any): UnifiedImage[] {
   return [...extractImagesFromAnthropicFormat(content), ...extractImagesFromOpenAI(content)]
 }
 
-export function convertImagesToKiroFormat(images: UnifiedImage[]): KiroImage[] {
-  return images.map((img) => {
-    const format = img.mediaType.split('/')[1] || 'png'
+interface ImageConversionResult {
+  images: KiroImage[]
+  omitted: number
+}
 
-    return {
-      format,
-      source: {
-        bytes: img.data
-      }
-    }
-  })
+export function convertImagesToKiroFormat(images: UnifiedImage[]): ImageConversionResult {
+  const selected: UnifiedImage[] = []
+  let totalBase64Chars = 0
+
+  for (const img of images) {
+    if (selected.length >= MAX_KIRO_IMAGES) break
+    if (totalBase64Chars + img.data.length > MAX_KIRO_IMAGE_BYTES) break
+    selected.push(img)
+    totalBase64Chars += img.data.length
+  }
+
+  return {
+    images: selected.map((img) => {
+      const format = img.mediaType.split('/')[1] || 'png'
+      return { format, source: { bytes: base64ToUint8Array(img.data) } }
+    }),
+    omitted: images.length - selected.length
+  }
 }
 
 export function extractTextFromParts(parts: any[]): string {

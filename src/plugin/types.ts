@@ -54,7 +54,7 @@ export interface CodeWhispererMessage {
     content: string
     modelId: string
     origin: string
-    images?: Array<{ format: string; source: { bytes: string } }>
+    images?: Array<{ format: string; source: { bytes: Uint8Array } }>
     userInputMessageContext?: {
       toolResults?: Array<{
         toolUseId: string
