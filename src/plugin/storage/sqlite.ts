@@ -2,6 +2,7 @@ import { Database } from 'bun:sqlite'
 import { existsSync, mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { isPermanentError, STALE_UNHEALTHY_THRESHOLD_MS } from '../health'
 import type { ManagedAccount } from '../types'
 import { deduplicateAccounts, mergeAccounts, withDatabaseLock } from './locked-operations'
 import { runMigrations } from './migrations'
@@ -41,6 +42,39 @@ export class KiroDatabase {
       )
     `)
     runMigrations(this.db)
+    this.purgeStaleUnhealthyAccountsSync()
+  }
+
+  /**
+   * Drop accounts that are unhealthy with a permanent auth error AND have not
+   * been used in a while. These are ghost rows left by IDC reauth cycles where
+   * a fresh `clientId` minted a new account row each login. Safe to remove
+   * because the upstream refresh token is permanently invalid.
+   */
+  private purgeStaleUnhealthyAccountsSync(): void {
+    try {
+      const cutoff = Date.now() - STALE_UNHEALTHY_THRESHOLD_MS
+      const candidates = this.db
+        .prepare(
+          `SELECT id, email, unhealthy_reason, last_used FROM accounts
+           WHERE is_healthy = 0 AND unhealthy_reason IS NOT NULL`
+        )
+        .all() as any[]
+      const toDrop = candidates.filter(
+        (r) => isPermanentError(r.unhealthy_reason) && (r.last_used || 0) < cutoff
+      )
+      if (toDrop.length === 0) return
+      const stmt = this.db.prepare('DELETE FROM accounts WHERE id = ?')
+      this.db.run('BEGIN TRANSACTION')
+      try {
+        for (const row of toDrop) stmt.run(row.id)
+        this.db.run('COMMIT')
+      } catch (e) {
+        this.db.run('ROLLBACK')
+      }
+    } catch {
+      // Best-effort cleanup. Never block plugin startup.
+    }
   }
 
   getAccounts(): any[] {
@@ -104,6 +138,7 @@ export class KiroDatabase {
         for (const account of deduplicated) {
           this.upsertAccountInternal(account)
         }
+        this.deleteDedupedRows(existing, deduplicated)
         this.db.run('COMMIT')
       } catch (e) {
         this.db.run('ROLLBACK')
@@ -123,6 +158,7 @@ export class KiroDatabase {
         for (const account of deduplicated) {
           this.upsertAccountInternal(account)
         }
+        this.deleteDedupedRows(existing, deduplicated)
         this.db.run('COMMIT')
       } catch (e) {
         this.db.run('ROLLBACK')
@@ -135,6 +171,14 @@ export class KiroDatabase {
     await withDatabaseLock(this.path, async () => {
       this.db.prepare('DELETE FROM accounts WHERE id = ?').run(id)
     })
+  }
+
+  private deleteDedupedRows(existing: ManagedAccount[], kept: ManagedAccount[]): void {
+    const keptIds = new Set(kept.map((a) => a.id))
+    const toDelete = existing.filter((a) => !keptIds.has(a.id))
+    if (toDelete.length === 0) return
+    const stmt = this.db.prepare('DELETE FROM accounts WHERE id = ?')
+    for (const account of toDelete) stmt.run(account.id)
   }
 
   private rowToAccount(row: any): ManagedAccount {

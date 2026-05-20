@@ -17,8 +17,14 @@ export function createDeterministicAccountId(
   clientId?: string,
   profileArn?: string
 ): string {
+  // For IAM Identity Center, intentionally exclude `clientId` from the id seed.
+  // Each `kiro-cli login` mints a brand-new OIDC device-registration `clientId`,
+  // so including it would create a fresh account row on every relogin and leave
+  // the previous one as a ghost with `Invalid refresh token`. The (email, method,
+  // profileArn) triplet uniquely identifies an IDC account in practice.
+  const idClientId = method === 'idc' ? '' : clientId || ''
   return createHash('sha256')
-    .update(`${email}:${method}:${clientId || ''}:${profileArn || ''}`)
+    .update(`${email}:${method}:${idClientId}:${profileArn || ''}`)
     .digest('hex')
 }
 
@@ -156,13 +162,16 @@ export class AccountManager {
     const i = this.accounts.findIndex((x) => x.id === a.id)
     if (i === -1) this.accounts.push(a)
     else this.accounts[i] = a
-    kiroDb.upsertAccount(a).catch((e) =>
-      logger.warn('DB write failed', {
-        method: 'addAccount',
-        email: a.email,
-        error: e instanceof Error ? e.message : String(e)
-      })
-    )
+    kiroDb.upsertAccount(a).catch((e) => {
+      const msg = e instanceof Error ? e.message : String(e)
+      // Lock contention is expected when multiple OpenCode processes start up
+      // at once. Demote to debug to avoid log spam during normal use.
+      if (msg.includes('Lock file is already being held')) {
+        logger.debug('DB write busy', { method: 'addAccount', email: a.email, error: msg })
+      } else {
+        logger.warn('DB write failed', { method: 'addAccount', email: a.email, error: msg })
+      }
+    })
   }
   removeAccount(a: ManagedAccount): void {
     const removedIndex = this.accounts.findIndex((x) => x.id === a.id)
