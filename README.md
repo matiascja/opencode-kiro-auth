@@ -1,4 +1,4 @@
-# OpenCode Kiro Auth Plugin
+# OpenCode Kiro Auth Plugin (fork: IDC ghost-account fix)
 
 [![npm version](https://img.shields.io/npm/v/@zhafron/opencode-kiro-auth)](https://www.npmjs.com/package/@zhafron/opencode-kiro-auth)
 [![npm downloads](https://img.shields.io/npm/dm/@zhafron/opencode-kiro-auth)](https://www.npmjs.com/package/@zhafron/opencode-kiro-auth)
@@ -6,6 +6,33 @@
 
 OpenCode plugin for AWS Kiro (CodeWhisperer) providing access to Claude Sonnet and Haiku
 models with substantial trial quotas.
+
+> Fork of [`tickernelz/opencode-kiro-auth`](https://github.com/tickernelz/opencode-kiro-auth).
+> Adds a fix for IAM Identity Center (IDC) deployments whose corporate sessions force a
+> `kiro-cli login` every few hours. Upstream rebuilt account ids on every login because
+> IDC rotates the OIDC `clientId`, leaving stale "Invalid refresh token" rows in
+> `kiro.db`. This fork keeps a single stable IDC account row across reauths.
+
+## Fork changes vs upstream `v1.10.1`
+
+- **Stable IDC account id.** `createDeterministicAccountId` (and the mirror in
+  `storage/locked-operations`) ignores the rotating `clientId` for `auth_method = idc`.
+  Identity is keyed on `email + auth_method + profile_arn`, so each `kiro-cli login`
+  refreshes the existing row instead of minting a new one.
+- **Logical IDC dedupe.** `deduplicateAccounts` groups IDC rows by their logical
+  identity, prefers healthy rows over permanent-error ghosts, and `KiroDatabase` now
+  deletes the discarded legacy rows during `upsertAccount` / `batchUpsertAccounts`.
+- **Stale ghost cleanup at startup.** `KiroDatabase.init()` purges accounts with
+  permanent auth errors (`Invalid refresh token`, `HTTP_401/403`,
+  `ExpiredTokenException`, etc.) older than `STALE_UNHEALTHY_THRESHOLD_MS` (24h).
+- **Skip expired CLI tokens.** `syncFromKiroCli` no longer imports rows whose
+  `expires_at` is already in the past.
+- **Quieter lock contention.** `proper-lockfile` retries raised from 5 to 10 (max
+  backoff 1s -> 2s) and `addAccount` lock-contention errors are demoted to debug.
+- **Tests.** New suites in `src/__tests__/` cover health helpers, deterministic IDs,
+  and IDC dedupe behaviour.
+
+Branch: [`fix/idc-ghost-accounts`](https://github.com/matiascja/opencode-kiro-auth/tree/fix/idc-ghost-accounts).
 
 ## Features
 
@@ -23,8 +50,12 @@ models with substantial trial quotas.
   model mappings.
 - **Automated Recovery**: Exponential backoff for rate limits and automated token
   refresh.
+- **IDC Ghost-Account Prevention (fork)**: Stable account id across `kiro-cli login`
+  cycles, logical IDC dedupe, and startup cleanup of stale permanent-error rows.
 
 ## Installation
+
+### Use the published upstream package
 
 Add the plugin to your `opencode.json` or `opencode.jsonc`:
 
@@ -148,6 +179,34 @@ Add the plugin to your `opencode.json` or `opencode.jsonc`:
 
 ## Setup
 
+### Using this fork directly
+
+If you want the IDC ghost-account fix without waiting for an upstream release, point
+OpenCode at a local build of this fork instead of the npm package:
+
+```bash
+git clone https://github.com/matiascja/opencode-kiro-auth.git
+cd opencode-kiro-auth
+git checkout fix/idc-ghost-accounts
+bun install
+bun test
+bun run build
+```
+
+Then set the `plugin` entry in `opencode.json` to the built file:
+
+```json
+{
+  "plugin": [
+    "file:///absolute/path/to/opencode-kiro-auth/dist/index.js"
+  ]
+}
+```
+
+Restart any running OpenCode processes so they load the fork build instead of the
+upstream version. Already-running processes keep the previously loaded plugin in memory
+and may continue emitting old `Lock file is already being held` warnings until restarted.
+
 1. **Authentication via Kiro CLI (Recommended)**:
    - Perform login directly in your terminal using `kiro-cli login`.
    - The plugin will automatically detect and import your session on startup.
@@ -204,6 +263,28 @@ mv "$PLUGIN_DIR/dist.bak.YYYYMMDD-HHMMSS" "$PLUGIN_DIR/dist"
 ```
 
 ## Troubleshooting
+
+### Symptom: `kiro.db` keeps growing after every IDC login (fork-specific notes)
+
+If you used a pre-fork version of the plugin and your `kiro.db` accumulated multiple
+rows per IDC email with `unhealthy_reason = 'Refresh failed: Invalid refresh token
+provided'`, this fork addresses the root cause:
+
+- New logins reuse the same account row instead of creating a new one.
+- Startup cleanup drops rows whose permanent-error `last_used` is older than 24h.
+- Stale legacy rows that share the same logical identity are deleted during the next
+  upsert by `KiroDatabase.upsertAccount` / `batchUpsertAccounts`.
+
+If you want to clean ghost rows immediately after upgrading to the fork, take a backup
+of `kiro.db` first and then run something like:
+
+```sql
+DELETE FROM accounts
+WHERE is_healthy = 0
+  AND unhealthy_reason LIKE 'Refresh failed%';
+```
+
+After that, restart OpenCode so all processes load the fork build.
 
 ### Error: Status: 403 (AccessDeniedException / User is not authorized)
 
