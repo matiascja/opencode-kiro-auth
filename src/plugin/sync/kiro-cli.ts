@@ -73,6 +73,17 @@ export async function syncFromKiroCli() {
         const cliExpiresAt =
           normalizeExpiresAt(data.expires_at ?? data.expiresAt) || Date.now() + 3600000
 
+        // Skip importing tokens whose expiry is already in the past. The CLI
+        // keeps stale rows around until the next login completes; importing
+        // them only creates ghost accounts that fail on first refresh.
+        if (cliExpiresAt > 0 && cliExpiresAt < Date.now()) {
+          logger.debug('Kiro CLI sync: skipping expired CLI token', {
+            authMethod,
+            cliExpiresAt
+          })
+          continue
+        }
+
         let usedCount = 0
         let limitCount = 0
         let email: string | undefined

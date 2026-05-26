@@ -1,5 +1,6 @@
 import type { AccountRepository } from '../../infrastructure/database/account-repository'
 import type { AccountManager } from '../../plugin/accounts'
+import * as logger from '../../plugin/logger'
 import type { ManagedAccount } from '../../plugin/types'
 
 type ToastFunction = (message: string, variant: 'info' | 'warning' | 'success' | 'error') => void
@@ -85,6 +86,12 @@ export class ErrorHandler {
       this.accountManager.markRateLimited(account, w)
       await this.repository.batchSave(this.accountManager.getAccounts())
       const count = this.accountManager.getAccountCount()
+      logger.warn('Rate limited (429)', {
+        email: account.email,
+        retry_after_ms: w,
+        account_count: count,
+        will_switch_account: count > 1
+      })
       if (count > 1) {
         return { shouldRetry: true, switchAccount: true }
       }
@@ -159,14 +166,31 @@ export class ErrorHandler {
     context: RequestContext,
     showToast: ToastFunction
   ): Promise<{ shouldRetry: boolean; newContext?: RequestContext }> {
+    const message = error instanceof Error ? error.message : String(error)
+    const code = (error as any)?.code
     if (this.isNetworkError(error) && context.retry < this.config.rate_limit_max_retries) {
       const d = this.config.rate_limit_retry_delay_ms * Math.pow(2, context.retry)
+      logger.warn('Network error, retrying', {
+        retry: context.retry,
+        max_retries: this.config.rate_limit_max_retries,
+        delay_ms: d,
+        code,
+        message
+      })
       showToast(`Network error. Retrying in ${Math.ceil(d / 1000)}s...`, 'warning')
       await this.sleep(d)
       return {
         shouldRetry: true,
         newContext: { ...context, retry: context.retry + 1 }
       }
+    }
+    if (this.isNetworkError(error)) {
+      logger.warn('Network error, retries exhausted', {
+        retry: context.retry,
+        max_retries: this.config.rate_limit_max_retries,
+        code,
+        message
+      })
     }
     return { shouldRetry: false }
   }

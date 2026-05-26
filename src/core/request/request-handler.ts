@@ -312,14 +312,17 @@ export class RequestHandler {
 
   private async performReauth(showToast: ToastFunction): Promise<boolean> {
     try {
+      logger.warn('Re-auth started: triggering OAuth flow', {
+        cooldown_active: false
+      })
       showToast('Session expired. Re-authenticating...', 'warning')
       await this.client.provider.oauth.authorize({
-        path: { id: 'kiro' },
+        path: { id: 'kiro-auth' },
         body: { method: 0 }
       })
 
       await this.client.provider.oauth.callback({
-        path: { id: 'kiro' },
+        path: { id: 'kiro-auth' },
         body: { method: 0 }
       })
 
@@ -330,11 +333,14 @@ export class RequestHandler {
       }
 
       if (!this.hasUsableAccount(accounts)) {
-        logger.warn('Re-auth completed but no usable Kiro account was found')
+        logger.warn('Re-auth completed but no usable Kiro account was found', {
+          account_count: accounts.length
+        })
         showToast('Re-authentication completed but no usable Kiro account was found.', 'error')
         return false
       }
 
+      logger.log('Re-auth successful', { account_count: accounts.length })
       showToast('Re-authentication successful.', 'success')
       return true
     } catch (e) {

@@ -7,9 +7,9 @@ import type { ManagedAccount } from '../types'
 const LOCK_OPTIONS = {
   stale: 10000,
   retries: {
-    retries: 5,
+    retries: 10,
     minTimeout: 100,
-    maxTimeout: 1000,
+    maxTimeout: 2000,
     factor: 2
   },
   realpath: false
@@ -45,7 +45,10 @@ export function createDeterministicId(
   clientId?: string,
   profileArn?: string
 ): string {
-  const parts = [email, authMethod, clientId || '', profileArn || ''].join(':')
+  // Mirror the policy in `accounts.ts/createDeterministicAccountId`: do NOT
+  // include `clientId` for IDC because every `kiro-cli login` rotates it.
+  const idClientId = authMethod === 'idc' ? '' : clientId || ''
+  const parts = [email, authMethod, idClientId, profileArn || ''].join(':')
   return createHash('sha256').update(parts).digest('hex')
 }
 
@@ -92,25 +95,38 @@ export function deduplicateAccounts(accounts: ManagedAccount[]): ManagedAccount[
   const accountMap = new Map<string, ManagedAccount>()
 
   for (const acc of accounts) {
-    const existing = accountMap.get(acc.id)
+    const key = getAccountIdentityKey(acc)
+    const existing = accountMap.get(key)
     if (!existing) {
-      accountMap.set(acc.id, acc)
+      accountMap.set(key, acc)
       continue
     }
 
-    const currLastUsed = acc.lastUsed || 0
-    const existLastUsed = existing.lastUsed || 0
-
-    if (currLastUsed > existLastUsed) {
-      accountMap.set(acc.id, acc)
-    } else if (currLastUsed === existLastUsed) {
-      const currAddedAt = acc.expiresAt || 0
-      const existAddedAt = existing.expiresAt || 0
-      if (currAddedAt > existAddedAt) {
-        accountMap.set(acc.id, acc)
-      }
+    if (isPreferredAccount(acc, existing)) {
+      accountMap.set(key, acc)
     }
   }
 
   return Array.from(accountMap.values())
+}
+
+function getAccountIdentityKey(acc: ManagedAccount): string {
+  if (acc.authMethod === 'idc') {
+    return ['idc', acc.email, acc.profileArn || '', acc.region || ''].join(':')
+  }
+  return acc.id
+}
+
+function isPreferredAccount(current: ManagedAccount, existing: ManagedAccount): boolean {
+  if (current.isHealthy !== existing.isHealthy) return current.isHealthy
+
+  const currentPermanent = isPermanentError(current.unhealthyReason)
+  const existingPermanent = isPermanentError(existing.unhealthyReason)
+  if (currentPermanent !== existingPermanent) return !currentPermanent
+
+  const currentLastUsed = current.lastUsed || 0
+  const existingLastUsed = existing.lastUsed || 0
+  if (currentLastUsed !== existingLastUsed) return currentLastUsed > existingLastUsed
+
+  return (current.expiresAt || 0) > (existing.expiresAt || 0)
 }
