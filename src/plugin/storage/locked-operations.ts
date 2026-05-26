@@ -7,9 +7,9 @@ import type { ManagedAccount } from '../types'
 const LOCK_OPTIONS = {
   stale: 10000,
   retries: {
-    retries: 10,
+    retries: 5,
     minTimeout: 100,
-    maxTimeout: 2000,
+    maxTimeout: 1000,
     factor: 2
   },
   realpath: false
