@@ -45,13 +45,68 @@ export const createKiroPlugin =
               limit: { context: 200000, output: 64000 },
               modalities: { input: ['text', 'image', 'pdf'], output: ['text'] }
             },
+            'claude-sonnet-4-5-thinking': {
+              name: 'Claude Sonnet 4.5 Thinking (1.3x)',
+              limit: { context: 200000, output: 64000 },
+              modalities: { input: ['text', 'image', 'pdf'], output: ['text'] },
+              variants: {
+                low: { thinkingConfig: { thinkingBudget: 8192 } },
+                medium: { thinkingConfig: { thinkingBudget: 16384 } },
+                max: { thinkingConfig: { thinkingBudget: 32768 } }
+              }
+            },
+            'claude-sonnet-4-5-1m': {
+              name: 'Claude Sonnet 4.5 (1M Context)',
+              limit: { context: 1000000, output: 64000 },
+              modalities: { input: ['text', 'image', 'pdf'], output: ['text'] }
+            },
+            'claude-sonnet-4-5-1m-thinking': {
+              name: 'Claude Sonnet 4.5 (1M Context) Thinking',
+              limit: { context: 1000000, output: 64000 },
+              modalities: { input: ['text', 'image', 'pdf'], output: ['text'] },
+              variants: {
+                low: { thinkingConfig: { thinkingBudget: 8192 } },
+                medium: { thinkingConfig: { thinkingBudget: 16384 } },
+                max: { thinkingConfig: { thinkingBudget: 32768 } }
+              }
+            },
             'claude-sonnet-4-6': {
               name: 'Claude Sonnet 4.6 (1.3x)',
               limit: { context: 1000000, output: 64000 },
               modalities: { input: ['text', 'image', 'pdf'], output: ['text'] }
             },
+            'claude-sonnet-4-6-thinking': {
+              name: 'Claude Sonnet 4.6 Thinking (1.3x)',
+              limit: { context: 1000000, output: 64000 },
+              modalities: { input: ['text', 'image', 'pdf'], output: ['text'] },
+              variants: {
+                low: { thinkingConfig: { thinkingBudget: 8192 } },
+                medium: { thinkingConfig: { thinkingBudget: 16384 } },
+                max: { thinkingConfig: { thinkingBudget: 32768 } }
+              }
+            },
+            'claude-sonnet-4-6-1m': {
+              name: 'Claude Sonnet 4.6 (1M Context)',
+              limit: { context: 1000000, output: 64000 },
+              modalities: { input: ['text', 'image', 'pdf'], output: ['text'] }
+            },
+            'claude-sonnet-4-6-1m-thinking': {
+              name: 'Claude Sonnet 4.6 (1M Context) Thinking',
+              limit: { context: 1000000, output: 64000 },
+              modalities: { input: ['text', 'image', 'pdf'], output: ['text'] },
+              variants: {
+                low: { thinkingConfig: { thinkingBudget: 8192 } },
+                medium: { thinkingConfig: { thinkingBudget: 16384 } },
+                max: { thinkingConfig: { thinkingBudget: 32768 } }
+              }
+            },
             'claude-sonnet-4': {
               name: 'Claude Sonnet 4.0 (1.3x)',
+              limit: { context: 200000, output: 64000 },
+              modalities: { input: ['text', 'image', 'pdf'], output: ['text'] }
+            },
+            'claude-3-7-sonnet': {
+              name: 'Claude 3.7 Sonnet',
               limit: { context: 200000, output: 64000 },
               modalities: { input: ['text', 'image', 'pdf'], output: ['text'] }
             },
@@ -60,20 +115,90 @@ export const createKiroPlugin =
               limit: { context: 200000, output: 64000 },
               modalities: { input: ['text', 'image'], output: ['text'] }
             },
+            'claude-haiku-4-5-thinking': {
+              name: 'Claude Haiku 4.5 Thinking (0.4x)',
+              limit: { context: 200000, output: 64000 },
+              modalities: { input: ['text', 'image'], output: ['text'] },
+              variants: {
+                low: { thinkingConfig: { thinkingBudget: 8192 } },
+                medium: { thinkingConfig: { thinkingBudget: 16384 } },
+                max: { thinkingConfig: { thinkingBudget: 32768 } }
+              }
+            },
             'claude-opus-4-5': {
               name: 'Claude Opus 4.5 (2.2x)',
               limit: { context: 200000, output: 64000 },
               modalities: { input: ['text', 'image', 'pdf'], output: ['text'] }
+            },
+            'claude-opus-4-5-thinking': {
+              name: 'Claude Opus 4.5 Thinking (2.2x)',
+              limit: { context: 200000, output: 64000 },
+              modalities: { input: ['text', 'image', 'pdf'], output: ['text'] },
+              variants: {
+                low: { thinkingConfig: { thinkingBudget: 8192 } },
+                medium: { thinkingConfig: { thinkingBudget: 16384 } },
+                max: { thinkingConfig: { thinkingBudget: 32768 } }
+              }
             },
             'claude-opus-4-6': {
               name: 'Claude Opus 4.6 (2.2x)',
               limit: { context: 1000000, output: 64000 },
               modalities: { input: ['text', 'image', 'pdf'], output: ['text'] }
             },
+            'claude-opus-4-6-thinking': {
+              name: 'Claude Opus 4.6 Thinking (2.2x)',
+              limit: { context: 1000000, output: 64000 },
+              modalities: { input: ['text', 'image', 'pdf'], output: ['text'] },
+              variants: {
+                low: { thinkingConfig: { thinkingBudget: 8192 } },
+                medium: { thinkingConfig: { thinkingBudget: 16384 } },
+                max: { thinkingConfig: { thinkingBudget: 32768 } }
+              }
+            },
+            'claude-opus-4-6-1m': {
+              name: 'Claude Opus 4.6 (1M Context)',
+              limit: { context: 1000000, output: 64000 },
+              modalities: { input: ['text', 'image', 'pdf'], output: ['text'] }
+            },
+            'claude-opus-4-6-1m-thinking': {
+              name: 'Claude Opus 4.6 (1M Context) Thinking',
+              limit: { context: 1000000, output: 64000 },
+              modalities: { input: ['text', 'image', 'pdf'], output: ['text'] },
+              variants: {
+                low: { thinkingConfig: { thinkingBudget: 8192 } },
+                medium: { thinkingConfig: { thinkingBudget: 16384 } },
+                max: { thinkingConfig: { thinkingBudget: 32768 } }
+              }
+            },
             'claude-opus-4-7': {
               name: 'Claude Opus 4.7 (2.2x)',
               limit: { context: 1000000, output: 64000 },
               modalities: { input: ['text', 'image', 'pdf'], output: ['text'] }
+            },
+            'claude-opus-4-7-thinking': {
+              name: 'Claude Opus 4.7 Thinking (2.2x)',
+              limit: { context: 1000000, output: 64000 },
+              modalities: { input: ['text', 'image', 'pdf'], output: ['text'] },
+              variants: {
+                low: { thinkingConfig: { thinkingBudget: 8192 } },
+                medium: { thinkingConfig: { thinkingBudget: 16384 } },
+                max: { thinkingConfig: { thinkingBudget: 32768 } }
+              }
+            },
+            'nova-swe': {
+              name: 'Nova SWE',
+              limit: { context: 128000, output: 64000 },
+              modalities: { input: ['text'], output: ['text'] }
+            },
+            'gpt-oss-120b': {
+              name: 'GPT OSS 120B',
+              limit: { context: 128000, output: 64000 },
+              modalities: { input: ['text'], output: ['text'] }
+            },
+            'minimax-m2': {
+              name: 'MiniMax M2',
+              limit: { context: 200000, output: 64000 },
+              modalities: { input: ['text'], output: ['text'] }
             },
             'minimax-m2.5': {
               name: 'MiniMax M2.5 (0.25x)',
@@ -83,6 +208,16 @@ export const createKiroPlugin =
             'minimax-m2.1': {
               name: 'MiniMax M2.1 (0.15x)',
               limit: { context: 200000, output: 64000 },
+              modalities: { input: ['text'], output: ['text'] }
+            },
+            'kimi-k2-thinking': {
+              name: 'Kimi K2 Thinking',
+              limit: { context: 128000, output: 64000 },
+              modalities: { input: ['text'], output: ['text'] }
+            },
+            'deepseek-3.2': {
+              name: 'DeepSeek 3.2 (0.25x)',
+              limit: { context: 128000, output: 64000 },
               modalities: { input: ['text'], output: ['text'] }
             },
             'qwen3-coder-next': {
