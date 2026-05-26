@@ -27,8 +27,13 @@ models with substantial trial quotas.
   `ExpiredTokenException`, etc.) older than `STALE_UNHEALTHY_THRESHOLD_MS` (24h).
 - **Skip expired CLI tokens.** `syncFromKiroCli` no longer imports rows whose
   `expires_at` is already in the past.
-- **Quieter lock contention.** `proper-lockfile` retries raised from 5 to 10 (max
-  backoff 1s -> 2s) and `addAccount` lock-contention errors are demoted to debug.
+- **Quieter lock contention.** `addAccount` lock-contention errors are demoted to debug
+  to avoid log spam during normal multi-process startup.
+- **Full default model list.** All ~30 models supported by `MODEL_MAPPING` are now
+  exposed in the default config (Opus 4.7, thinking variants, 1M context variants,
+  claude-3-7-sonnet, nova-swe, gpt-oss-120b, minimax-m2, kimi-k2-thinking, deepseek-3.2,
+  haiku/opus thinking modes), so users no longer need to copy a model block into
+  `opencode.json`.
 - **Tests.** New suites in `src/__tests__/` cover health helpers, deterministic IDs,
   and IDC dedupe behaviour.
 
@@ -61,116 +66,50 @@ Add the plugin to your `opencode.json` or `opencode.jsonc`:
 
 ```json
 {
+  "plugin": ["@zhafron/opencode-kiro-auth"]
+}
+```
+
+That's it. The plugin auto-injects every supported model under the `kiro-auth`
+provider, so a separate `provider.kiro-auth.models` block is no longer required.
+
+### Available models
+
+Default models exposed by the plugin (all reachable as `kiro-auth/<id>`):
+
+| Family     | Base                | Thinking                     | 1M context             | 1M context thinking             |
+| ---------- | ------------------- | ---------------------------- | ---------------------- | ------------------------------- |
+| Sonnet 4.5 | `claude-sonnet-4-5` | `claude-sonnet-4-5-thinking` | `claude-sonnet-4-5-1m` | `claude-sonnet-4-5-1m-thinking` |
+| Sonnet 4.6 | `claude-sonnet-4-6` | `claude-sonnet-4-6-thinking` | `claude-sonnet-4-6-1m` | `claude-sonnet-4-6-1m-thinking` |
+| Sonnet 4.0 | `claude-sonnet-4`   | -                            | -                      | -                               |
+| Sonnet 3.7 | `claude-3-7-sonnet` | -                            | -                      | -                               |
+| Haiku 4.5  | `claude-haiku-4-5`  | `claude-haiku-4-5-thinking`  | -                      | -                               |
+| Opus 4.5   | `claude-opus-4-5`   | `claude-opus-4-5-thinking`   | -                      | -                               |
+| Opus 4.6   | `claude-opus-4-6`   | `claude-opus-4-6-thinking`   | `claude-opus-4-6-1m`   | `claude-opus-4-6-1m-thinking`   |
+| Opus 4.7   | `claude-opus-4-7`   | `claude-opus-4-7-thinking`   | -                      | -                               |
+
+Other models: `auto`, `nova-swe`, `gpt-oss-120b`, `minimax-m2`, `minimax-m2.5`,
+`minimax-m2.1`, `kimi-k2-thinking`, `deepseek-3.2`, `qwen3-coder-next`.
+
+Thinking-capable models accept the `low` / `medium` / `max` variants
+(`thinkingBudget` of 8192 / 16384 / 32768 tokens respectively).
+
+### Override or extend models
+
+If you want to override defaults (e.g. tweak limits or add an unlisted model id),
+provide a `provider.kiro-auth.models` block in `opencode.json`. Keys you set there
+take precedence; everything else still falls back to the plugin's defaults:
+
+```json
+{
   "plugin": ["@zhafron/opencode-kiro-auth"],
   "provider": {
-    "kiro": {
+    "kiro-auth": {
       "models": {
-        "claude-sonnet-4-5": {
-          "name": "Claude Sonnet 4.5",
-          "limit": { "context": 200000, "output": 64000 },
-          "modalities": { "input": ["text", "image", "pdf"], "output": ["text"] }
-        },
-        "claude-sonnet-4-5-thinking": {
-          "name": "Claude Sonnet 4.5 Thinking",
-          "limit": { "context": 200000, "output": 64000 },
-          "modalities": { "input": ["text", "image", "pdf"], "output": ["text"] },
-          "variants": {
-            "low": { "thinkingConfig": { "thinkingBudget": 8192 } },
-            "medium": { "thinkingConfig": { "thinkingBudget": 16384 } },
-            "max": { "thinkingConfig": { "thinkingBudget": 32768 } }
-          }
-        },
-        "claude-sonnet-4-6": {
-          "name": "Claude Sonnet 4.6",
-          "limit": { "context": 200000, "output": 64000 },
-          "modalities": { "input": ["text", "image", "pdf"], "output": ["text"] }
-        },
-        "claude-sonnet-4-6-thinking": {
-          "name": "Claude Sonnet 4.6 Thinking",
-          "limit": { "context": 200000, "output": 64000 },
-          "modalities": { "input": ["text", "image", "pdf"], "output": ["text"] },
-          "variants": {
-            "low": { "thinkingConfig": { "thinkingBudget": 8192 } },
-            "medium": { "thinkingConfig": { "thinkingBudget": 16384 } },
-            "max": { "thinkingConfig": { "thinkingBudget": 32768 } }
-          }
-        },
-        "claude-haiku-4-5": {
-          "name": "Claude Haiku 4.5",
-          "limit": { "context": 200000, "output": 64000 },
-          "modalities": { "input": ["text", "image"], "output": ["text"] }
-        },
-        "claude-opus-4-5": {
-          "name": "Claude Opus 4.5",
-          "limit": { "context": 200000, "output": 64000 },
-          "modalities": { "input": ["text", "image", "pdf"], "output": ["text"] }
-        },
-        "claude-opus-4-5-thinking": {
-          "name": "Claude Opus 4.5 Thinking",
-          "limit": { "context": 200000, "output": 64000 },
-          "modalities": { "input": ["text", "image", "pdf"], "output": ["text"] },
-          "variants": {
-            "low": { "thinkingConfig": { "thinkingBudget": 8192 } },
-            "medium": { "thinkingConfig": { "thinkingBudget": 16384 } },
-            "max": { "thinkingConfig": { "thinkingBudget": 32768 } }
-          }
-        },
-        "claude-opus-4-6": {
-          "name": "Claude Opus 4.6",
-          "limit": { "context": 200000, "output": 64000 },
-          "modalities": { "input": ["text", "image", "pdf"], "output": ["text"] }
-        },
-        "claude-opus-4-6-thinking": {
-          "name": "Claude Opus 4.6 Thinking",
-          "limit": { "context": 200000, "output": 64000 },
-          "modalities": { "input": ["text", "image", "pdf"], "output": ["text"] },
-          "variants": {
-            "low": { "thinkingConfig": { "thinkingBudget": 8192 } },
-            "medium": { "thinkingConfig": { "thinkingBudget": 16384 } },
-            "max": { "thinkingConfig": { "thinkingBudget": 32768 } }
-          }
-        },
-        "claude-opus-4-6-1m": {
-          "name": "Claude Opus 4.6 (1M Context)",
-          "limit": { "context": 1000000, "output": 64000 },
-          "modalities": { "input": ["text", "image", "pdf"], "output": ["text"] }
-        },
-        "claude-opus-4-6-1m-thinking": {
-          "name": "Claude Opus 4.6 (1M Context) Thinking",
-          "limit": { "context": 1000000, "output": 64000 },
-          "modalities": { "input": ["text", "image", "pdf"], "output": ["text"] },
-          "variants": {
-            "low": { "thinkingConfig": { "thinkingBudget": 8192 } },
-            "medium": { "thinkingConfig": { "thinkingBudget": 16384 } },
-            "max": { "thinkingConfig": { "thinkingBudget": 32768 } }
-          }
-        },
-        "claude-sonnet-4-5-1m": {
-          "name": "Claude Sonnet 4.5 (1M Context)",
-          "limit": { "context": 1000000, "output": 64000 },
-          "modalities": { "input": ["text", "image", "pdf"], "output": ["text"] }
-        },
-        "claude-sonnet-4-6-1m": {
-          "name": "Claude Sonnet 4.6 (1M Context)",
-          "limit": { "context": 1000000, "output": 64000 },
-          "modalities": { "input": ["text", "image", "pdf"], "output": ["text"] }
-        },
-        "claude-sonnet-4-6-1m-thinking": {
-          "name": "Claude Sonnet 4.6 (1M Context) Thinking",
-          "limit": { "context": 1000000, "output": 64000 },
-          "modalities": { "input": ["text", "image", "pdf"], "output": ["text"] },
-          "variants": {
-            "low": { "thinkingConfig": { "thinkingBudget": 8192 } },
-            "medium": { "thinkingConfig": { "thinkingBudget": 16384 } },
-            "max": { "thinkingConfig": { "thinkingBudget": 32768 } }
-          }
-        },
-        "auto": { "name": "Auto (1.0x)" },
-        "claude-sonnet-4": { "name": "Claude Sonnet 4.0 (1.3x)", "limit": { "context": 200000, "output": 64000 } },
-        "deepseek-3.2": { "name": "DeepSeek 3.2 (0.25x)", "limit": { "context": 128000, "output": 64000 } },
-        "minimax-m2.5": { "name": "MiniMax 2.5 (0.25x)", "limit": { "context": 200000, "output": 64000 } },
-        "minimax-m2.1": { "name": "MiniMax 2.1 (0.15x)", "limit": { "context": 200000, "output": 64000 } },
-        "qwen3-coder-next": { "name": "Qwen3 Coder Next (0.05x)", "limit": { "context": 256000, "output": 64000 } }
+        "claude-opus-4-7": {
+          "name": "Opus 4.7 (custom)",
+          "limit": { "context": 200000, "output": 64000 }
+        }
       }
     }
   }
@@ -197,9 +136,7 @@ Then set the `plugin` entry in `opencode.json` to the built file:
 
 ```json
 {
-  "plugin": [
-    "file:///absolute/path/to/opencode-kiro-auth/dist/index.js"
-  ]
+  "plugin": ["file:///absolute/path/to/opencode-kiro-auth/dist/index.js"]
 }
 ```
 
