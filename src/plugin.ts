@@ -185,6 +185,21 @@ export const createKiroPlugin =
                 max: { thinkingConfig: { thinkingBudget: 32768 } }
               }
             },
+            'claude-opus-4-8': {
+              name: 'Claude Opus 4.8 (2.2x)',
+              limit: { context: 1000000, output: 64000 },
+              modalities: { input: ['text', 'image', 'pdf'], output: ['text'] }
+            },
+            'claude-opus-4-8-thinking': {
+              name: 'Claude Opus 4.8 Thinking (2.2x)',
+              limit: { context: 1000000, output: 64000 },
+              modalities: { input: ['text', 'image', 'pdf'], output: ['text'] },
+              variants: {
+                low: { thinkingConfig: { thinkingBudget: 8192 } },
+                medium: { thinkingConfig: { thinkingBudget: 16384 } },
+                max: { thinkingConfig: { thinkingBudget: 32768 } }
+              }
+            },
             'nova-swe': {
               name: 'Nova SWE',
               limit: { context: 128000, output: 64000 },

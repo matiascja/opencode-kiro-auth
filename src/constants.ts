@@ -68,6 +68,8 @@ export const MODEL_MAPPING: Record<string, string> = {
   'claude-opus-4-6-1m-thinking': 'claude-opus-4.6-1m',
   'claude-opus-4-7': 'claude-opus-4.7',
   'claude-opus-4-7-thinking': 'claude-opus-4.7',
+  'claude-opus-4-8': 'claude-opus-4.8',
+  'claude-opus-4-8-thinking': 'claude-opus-4.8',
   'claude-sonnet-4': 'claude-sonnet-4',
   'claude-3-7-sonnet': 'CLAUDE_3_7_SONNET_20250219_V1_0',
   'nova-swe': 'AGI_NOVA_SWE_V1_5',

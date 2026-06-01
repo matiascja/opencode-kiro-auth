@@ -87,6 +87,7 @@ Default models exposed by the plugin (all reachable as `kiro-auth/<id>`):
 | Opus 4.5   | `claude-opus-4-5`   | `claude-opus-4-5-thinking`   | -                      | -                               |
 | Opus 4.6   | `claude-opus-4-6`   | `claude-opus-4-6-thinking`   | `claude-opus-4-6-1m`   | `claude-opus-4-6-1m-thinking`   |
 | Opus 4.7   | `claude-opus-4-7`   | `claude-opus-4-7-thinking`   | -                      | -                               |
+| Opus 4.8   | `claude-opus-4-8`   | `claude-opus-4-8-thinking`   | -                      | -                               |
 
 Other models: `auto`, `nova-swe`, `gpt-oss-120b`, `minimax-m2`, `minimax-m2.5`,
 `minimax-m2.1`, `kimi-k2-thinking`, `deepseek-3.2`, `qwen3-coder-next`.
