@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { deduplicateAccounts } from '../plugin/storage/locked-operations.js'
+import { deduplicateAccounts, mergeAccounts } from '../plugin/storage/locked-operations.js'
 import type { ManagedAccount } from '../plugin/types.js'
 
 const base: ManagedAccount = {
@@ -64,5 +64,41 @@ describe('deduplicateAccounts', () => {
     ])
 
     expect(rows).toHaveLength(2)
+  })
+})
+
+describe('mergeAccounts', () => {
+  test('healthy CLI sync revives same IDC account after permanent refresh error', () => {
+    const rows = mergeAccounts(
+      [
+        {
+          ...base,
+          isHealthy: false,
+          unhealthyReason: 'Refresh failed: Invalid refresh token provided',
+          failCount: 10,
+          lastUsed: 1_700_000_000_000,
+          lastSync: 1_700_000_000_000
+        }
+      ],
+      [
+        {
+          ...base,
+          refreshToken: 'refresh-new',
+          accessToken: 'access-new',
+          expiresAt: base.expiresAt + 1000,
+          isHealthy: true,
+          failCount: 0,
+          usedCount: 6000,
+          limitCount: 10000,
+          lastSync: 1_700_000_010_000
+        }
+      ]
+    )
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.isHealthy).toBe(true)
+    expect(rows[0]!.unhealthyReason).toBeUndefined()
+    expect(rows[0]!.failCount).toBe(0)
+    expect(rows[0]!.refreshToken).toBe('refresh-new')
   })
 })
