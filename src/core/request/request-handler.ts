@@ -29,6 +29,7 @@ export class RequestHandler {
   private retryStrategy: RetryStrategy
   private reauthInFlight: Promise<boolean> | null = null
   private lastFailedReauthAt = 0
+  private static kiroRequestQueue: Promise<void> = Promise.resolve()
 
   constructor(
     private accountManager: AccountManager,
@@ -51,7 +52,24 @@ export class RequestHandler {
       return fetch(input, init)
     }
 
-    return this.handleKiroRequest(url, init, showToast)
+    return this.enqueueKiroRequest(() => this.handleKiroRequest(url, init, showToast))
+  }
+
+  private async enqueueKiroRequest<T>(run: () => Promise<T>): Promise<T> {
+    const previous = RequestHandler.kiroRequestQueue
+    let release!: () => void
+
+    RequestHandler.kiroRequestQueue = new Promise((resolve) => {
+      release = resolve
+    })
+
+    await previous.catch(() => {})
+
+    try {
+      return await run()
+    } finally {
+      release()
+    }
   }
 
   private async handleKiroRequest(
@@ -61,8 +79,13 @@ export class RequestHandler {
   ): Promise<Response> {
     const body = init?.body ? JSON.parse(init.body) : {}
     const model = this.extractModel(url) || body.model || 'claude-sonnet-4-5'
-    const think = model.endsWith('-thinking') || !!body.providerOptions?.thinkingConfig
-    const budget = body.providerOptions?.thinkingConfig?.thinkingBudget || 20000
+    const think =
+      model.endsWith('-thinking') || !!body.providerOptions?.thinkingConfig || !!body.thinkingConfig
+    const budget =
+      body.providerOptions?.thinkingConfig?.thinkingBudget ||
+      body.thinkingConfig?.thinkingBudget ||
+      body.thinkingConfig?.budget_tokens ||
+      20000
 
     let retry = 0
     let consecutiveNullAccounts = 0
@@ -124,7 +147,7 @@ export class RequestHandler {
       }
 
       try {
-        const client = createSdkClient(auth, sdkPrep.region)
+        const client = createSdkClient(auth, sdkPrep.region, sdkPrep.effort)
         const command = new GenerateAssistantResponseCommand({
           conversationState: sdkPrep.conversationState as any,
           profileArn: sdkPrep.profileArn
@@ -209,7 +232,10 @@ export class RequestHandler {
     budget: number,
     showToast?: (message: string, variant: 'info' | 'warning' | 'success' | 'error') => void
   ): SdkPreparedRequest {
-    return transformToSdkRequest(body, model, auth, think, budget, showToast)
+    return transformToSdkRequest(body, model, auth, think, budget, showToast, {
+      effort: this.config.effort,
+      autoEffortMapping: this.config.auto_effort_mapping
+    })
   }
 
   private handleSuccessfulRequest(acc: ManagedAccount): void {
