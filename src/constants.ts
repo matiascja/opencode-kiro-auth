@@ -80,6 +80,7 @@ export const MODEL_MAPPING: Record<string, string> = {
   'kimi-k2-thinking': 'MOONSHOT_KIMI_K2_THINKING',
   auto: 'auto',
   'deepseek-3.2': 'deepseek-3.2',
+  'glm-5': 'glm-5',
   'minimax-m2.5': 'minimax-m2.5',
   'minimax-m2.1': 'minimax-m2.1',
   'qwen3-coder-next': 'qwen3-coder-next'

@@ -235,6 +235,11 @@ export const createKiroPlugin =
               limit: { context: 200000, output: 64000 },
               modalities: { input: ['text'], output: ['text'] }
             },
+            'glm-5': {
+              name: 'GLM-5 (0.5x)',
+              limit: { context: 200000, output: 64000 },
+              modalities: { input: ['text'], output: ['text'] }
+            },
             'minimax-m2.1': {
               name: 'MiniMax M2.1 (0.15x)',
               limit: { context: 200000, output: 64000 },
