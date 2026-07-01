@@ -99,7 +99,7 @@ export class RequestHandler {
       }
 
       consecutiveNullAccounts = 0
-      const auth = this.accountManager.toAuthDetails(acc)
+      let auth = this.accountManager.toAuthDetails(acc)
 
       const tokenResult = await this.tokenRefresher.refreshIfNeeded(acc, auth, showToast)
       if (tokenResult.shouldContinue) {
@@ -107,6 +107,14 @@ export class RequestHandler {
         await this.sleep(500)
         continue
       }
+
+      // A proactive refresh inside refreshIfNeeded mutates the account in place,
+      // but `auth` was snapshotted before the refresh and still holds the expired
+      // access token. Re-derive it so the request uses the freshly minted token
+      // instead of the stale one (which the server rejects with 403 until the
+      // prompt is resent).
+      acc = tokenResult.account
+      auth = this.accountManager.toAuthDetails(acc)
 
       const sdkPrep = this.prepareSdkRequest(init?.body, model, auth, think, budget, showToast)
 
