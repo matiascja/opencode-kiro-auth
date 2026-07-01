@@ -100,6 +100,21 @@ export const createKiroPlugin =
                 max: { thinkingConfig: { thinkingBudget: 32768 } }
               }
             },
+            'claude-sonnet-5': {
+              name: 'Claude Sonnet 5 (1.3x)',
+              limit: { context: 1000000, output: 64000 },
+              modalities: { input: ['text', 'image', 'pdf'], output: ['text'] }
+            },
+            'claude-sonnet-5-thinking': {
+              name: 'Claude Sonnet 5 Thinking (1.3x)',
+              limit: { context: 1000000, output: 64000 },
+              modalities: { input: ['text', 'image', 'pdf'], output: ['text'] },
+              variants: {
+                low: { thinkingConfig: { thinkingBudget: 8192 } },
+                medium: { thinkingConfig: { thinkingBudget: 16384 } },
+                max: { thinkingConfig: { thinkingBudget: 32768 } }
+              }
+            },
             'claude-sonnet-4': {
               name: 'Claude Sonnet 4.0 (1.3x)',
               limit: { context: 200000, output: 64000 },
