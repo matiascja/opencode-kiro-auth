@@ -6,6 +6,9 @@ describe('resolveKiroModel', () => {
   test('resolves newly advertised model slugs', () => {
     expect(resolveKiroModel('auto')).toBe('auto')
     expect(resolveKiroModel('deepseek-3.2')).toBe('deepseek-3.2')
+    expect(resolveKiroModel('gpt-5.6-sol')).toBe('gpt-5.6-sol')
+    expect(resolveKiroModel('gpt-5.6-terra')).toBe('gpt-5.6-terra')
+    expect(resolveKiroModel('gpt-5.6-luna')).toBe('gpt-5.6-luna')
     expect(resolveKiroModel('minimax-m2.5')).toBe('minimax-m2.5')
     expect(resolveKiroModel('minimax-m2.1')).toBe('minimax-m2.1')
     expect(resolveKiroModel('qwen3-coder-next')).toBe('qwen3-coder-next')

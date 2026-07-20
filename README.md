@@ -29,10 +29,10 @@ models with substantial trial quotas.
   `expires_at` is already in the past.
 - **Quieter lock contention.** `addAccount` lock-contention errors are demoted to debug
   to avoid log spam during normal multi-process startup.
-- **Full default model list.** All ~30 models supported by `MODEL_MAPPING` are now
+- **Full default model list.** All supported models from `MODEL_MAPPING` are now
   exposed in the default config (Opus 4.7, thinking variants, 1M context variants,
-  claude-3-7-sonnet, nova-swe, gpt-oss-120b, minimax-m2, kimi-k2-thinking, deepseek-3.2,
-  haiku/opus thinking modes), so users no longer need to copy a model block into
+  claude-3-7-sonnet, nova-swe, GPT 5.6, gpt-oss-120b, minimax-m2, kimi-k2-thinking,
+  deepseek-3.2, haiku/opus thinking modes), so users no longer need to copy a model block into
   `opencode.json`.
 - **Tests.** New suites in `src/__tests__/` cover health helpers, deterministic IDs,
   and IDC dedupe behaviour.
@@ -89,8 +89,9 @@ Default models exposed by the plugin (all reachable as `kiro-auth/<id>`):
 | Opus 4.7   | `claude-opus-4-7`   | `claude-opus-4-7-thinking`   | -                      | -                               |
 | Opus 4.8   | `claude-opus-4-8`   | `claude-opus-4-8-thinking`   | -                      | -                               |
 
-Other models: `auto`, `nova-swe`, `gpt-oss-120b`, `minimax-m2`, `minimax-m2.5`,
-`minimax-m2.1`, `kimi-k2-thinking`, `deepseek-3.2`, `qwen3-coder-next`.
+Other models: `auto`, `nova-swe`, `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`,
+`gpt-oss-120b`, `minimax-m2`, `minimax-m2.5`, `minimax-m2.1`, `kimi-k2-thinking`,
+`deepseek-3.2`, `qwen3-coder-next`.
 
 Thinking-capable models accept the `low` / `medium` / `max` variants
 (`thinkingBudget` of 8192 / 16384 / 32768 tokens respectively).
