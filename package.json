@@ -1,7 +1,7 @@
 {
-  "name": "@zhafron/opencode-kiro-auth",
-  "version": "1.10.1",
-  "description": "OpenCode plugin for AWS Kiro (CodeWhisperer) providing access to Claude models",
+  "name": "@matiascja/opencode-kiro-auth",
+  "version": "1.12.0",
+  "description": "OpenCode plugin for AWS Kiro (CodeWhisperer). Fork of @zhafron/opencode-kiro-auth with an IDC ghost-account fix; provider id kept as 'kiro-auth' (upstream reverted to 'kiro' in 1.11.0). Not published to npm — install via file:// pointing at this repo's dist/index.js.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -23,17 +23,17 @@
     "auth"
   ],
   "author": "tickernelz",
+  "contributors": ["matiascja (fork maintainer)"],
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/tickernelz/opencode-kiro-auth.git"
+    "url": "git+https://github.com/matiascja/opencode-kiro-auth.git"
   },
-  "publishConfig": {
-    "access": "public"
-  },
+  "private": true,
   "dependencies": {
     "@aws/codewhisperer-streaming-client": "^1.0.34",
-    "@opencode-ai/plugin": "^1.14.39",
+    "@opencode-ai/plugin": "^1.15.11",
+    "libsql": "^0.5.29",
     "proper-lockfile": "^4.1.2",
     "zod": "^3.24.0"
   },

@@ -22,10 +22,13 @@ export function createDeterministicAccountId(
   // so including it would create a fresh account row on every relogin and leave
   // the previous one as a ghost with `Invalid refresh token`. The (email, method,
   // profileArn) triplet uniquely identifies an IDC account in practice.
-  const idClientId = method === 'idc' ? '' : clientId || ''
-  return createHash('sha256')
-    .update(`${email}:${method}:${idClientId}:${profileArn || ''}`)
-    .digest('hex')
+  // Upstream independently converged on the same fix (see PR history) — this is
+  // the fork's original ghost-account fix, now aligned with upstream's version.
+  const key =
+    method === 'idc'
+      ? `${email}:${method}:${profileArn || ''}`
+      : `${email}:${method}:${clientId || ''}:${profileArn || ''}`
+  return createHash('sha256').update(key).digest('hex')
 }
 
 export class AccountManager {
@@ -40,6 +43,19 @@ export class AccountManager {
     this.strategy = strategy
   }
   static async loadFromDisk(strategy?: AccountSelectionStrategy): Promise<AccountManager> {
+    // Sweep stale rows (test placeholders, never-upgraded placeholders,
+    // long-expired permanently-unhealthy accounts) before loading so the
+    // account pool reflects only real, usable credentials.
+    try {
+      const removed = await kiroDb.cleanupTestAndStaleAccounts()
+      if (removed > 0) {
+        logger.log(`Accounts: swept ${removed} stale row(s) from DB`)
+      }
+    } catch (e) {
+      logger.debug(
+        `Accounts: cleanup sweep failed (non-fatal): ${e instanceof Error ? e.message : String(e)}`
+      )
+    }
     const rows = kiroDb.getAccounts()
     const accounts: ManagedAccount[] = rows.map((r: any) => ({
       id: r.id,
@@ -108,8 +124,16 @@ export class AccountManager {
       if (this.strategy === 'sticky') {
         selected = available.find((_, i) => i === this.cursor) || available[0]
       } else if (this.strategy === 'round-robin') {
-        selected = available[this.cursor % available.length]
-        this.cursor = (this.cursor + 1) % available.length
+        // Cursor anchored to this.accounts, not the filtered `available` list
+        const n = this.accounts.length
+        for (let i = 0; i < n; i++) {
+          const candidate = this.accounts[(this.cursor + i) % n]
+          if (candidate && available.includes(candidate)) {
+            selected = candidate
+            this.cursor = (this.accounts.indexOf(candidate) + 1) % n
+            break
+          }
+        }
       } else if (this.strategy === 'lowest-usage') {
         selected = [...available].sort(
           (a, b) => (a.usedCount || 0) - (b.usedCount || 0) || (a.lastUsed || 0) - (b.lastUsed || 0)
@@ -117,22 +141,30 @@ export class AccountManager {
       }
     }
     if (!selected) {
+      // Fallback: unhealthy accounts without a scheduled recoveryTime
       const fallback = this.accounts
-        .filter((a) => !a.isHealthy && a.failCount < 10 && !isPermanentError(a.unhealthyReason))
+        .filter(
+          (a) =>
+            !a.isHealthy &&
+            a.failCount < 10 &&
+            !isPermanentError(a.unhealthyReason) &&
+            !a.recoveryTime
+        )
         .sort(
           (a, b) => (a.usedCount || 0) - (b.usedCount || 0) || (a.lastUsed || 0) - (b.lastUsed || 0)
         )[0]
       if (fallback) {
         fallback.isHealthy = true
         delete fallback.unhealthyReason
-        delete fallback.recoveryTime
         selected = fallback
       }
     }
     if (selected) {
       selected.lastUsed = now
       selected.usedCount = (selected.usedCount || 0) + 1
-      this.cursor = this.accounts.indexOf(selected)
+      if (this.strategy !== 'round-robin') {
+        this.cursor = this.accounts.indexOf(selected)
+      }
       return selected
     }
     return null

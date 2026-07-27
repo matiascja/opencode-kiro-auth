@@ -1,4 +1,4 @@
-import { Database } from 'bun:sqlite'
+import Database from 'libsql'
 import { existsSync } from 'node:fs'
 import { extractRegionFromArn, normalizeRegion } from '../../constants'
 import { createDeterministicAccountId } from '../accounts'
@@ -13,13 +13,18 @@ import {
   safeJsonParse
 } from './kiro-cli-parser'
 import { readActiveProfileArnFromKiroCli } from './kiro-cli-profile'
+import {
+  getStaleKiroCliAccountIds,
+  STALE_CLI_ACCOUNT_REASON,
+  type SyncedCliAccount
+} from './stale-accounts'
 
 export async function syncFromKiroCli() {
   const dbPath = getCliDbPath()
   if (!existsSync(dbPath)) return
   try {
     const cliDb = new Database(dbPath, { readonly: true })
-    cliDb.run('PRAGMA busy_timeout = 5000')
+    cliDb.pragma('busy_timeout = 5000')
     const rows = cliDb.prepare('SELECT key, value FROM auth_kv').all() as any[]
     let activeProfileArn: string | undefined
     try {
@@ -38,6 +43,7 @@ export async function syncFromKiroCli() {
     )
     const deviceReg = safeJsonParse(deviceRegRow?.value)
     const regCreds = deviceReg ? findClientCredsRecursive(deviceReg) : {}
+    const syncedAccounts: SyncedCliAccount[] = []
 
     for (const row of rows) {
       if (row.key.includes(':token')) {
@@ -46,10 +52,12 @@ export async function syncFromKiroCli() {
 
         const isIdc = row.key.includes('odic')
         const authMethod = isIdc ? 'idc' : 'desktop'
-        const oidcRegion = normalizeRegion(data.region)
         let profileArn: string | undefined = data.profile_arn || data.profileArn
         if (!profileArn && isIdc) profileArn = activeProfileArn || readActiveProfileArnFromKiroCli()
-        const serviceRegion = extractRegionFromArn(profileArn) || oidcRegion
+        // serviceRegion wins over data.region: kiro-cli stores data.region as the
+        // OIDC region (often us-east-1) regardless of where the account actually lives.
+        const serviceRegion = extractRegionFromArn(profileArn) || normalizeRegion(data.region)
+        const oidcRegion = serviceRegion
         const startUrl: string | undefined =
           typeof data.start_url === 'string'
             ? data.start_url
@@ -133,8 +141,33 @@ export async function syncFromKiroCli() {
           }
         }
 
-        const resolvedEmail =
+        // Reuse known email for this profileArn to avoid duplicate placeholder rows
+        let resolvedEmail: string =
           email || makePlaceholderEmail(authMethod, serviceRegion, clientId, profileArn)
+        if (resolvedEmail.startsWith('placeholder-')) {
+          let existingReal: any | undefined
+          if (profileArn) {
+            existingReal = all.find(
+              (a) =>
+                a.auth_method === authMethod &&
+                a.profile_arn === profileArn &&
+                a.email &&
+                !a.email.startsWith('placeholder-')
+            )
+          }
+          if (!existingReal && authMethod === 'idc' && clientId) {
+            existingReal = all.find(
+              (a) =>
+                a.auth_method === 'idc' &&
+                a.client_id === clientId &&
+                a.email &&
+                !a.email.startsWith('placeholder-')
+            )
+          }
+          if (existingReal) {
+            resolvedEmail = existingReal.email
+          }
+        }
 
         const id = createDeterministicAccountId(resolvedEmail, authMethod, clientId, profileArn)
         const existingById = all.find((a) => a.id === id)
@@ -207,8 +240,27 @@ export async function syncFromKiroCli() {
           limitCount,
           lastSync: Date.now()
         })
+
+        syncedAccounts.push({
+          id,
+          email: resolvedEmail,
+          authMethod,
+          clientId,
+          profileArn
+        })
+
+        if (authMethod === 'idc' && profileArn) {
+          await kiroDb.deleteStaleIdcDuplicates(id, resolvedEmail, profileArn)
+        }
       }
     }
+
+    const staleIds = getStaleKiroCliAccountIds(kiroDb.getAccounts(), syncedAccounts)
+    if (staleIds.length > 0) {
+      await kiroDb.markAccountsUnhealthy(staleIds, STALE_CLI_ACCOUNT_REASON)
+      logger.warn('Kiro CLI sync: deactivated stale cached accounts', { count: staleIds.length })
+    }
+
     cliDb.close()
   } catch (e) {
     logger.error('Sync failed', e)
@@ -220,7 +272,7 @@ export async function writeToKiroCli(acc: any) {
   if (!existsSync(dbPath)) return
   try {
     const cliDb = new Database(dbPath)
-    cliDb.run('PRAGMA busy_timeout = 5000')
+    cliDb.pragma('busy_timeout = 5000')
     const rows = cliDb.prepare('SELECT key, value FROM auth_kv').all() as any[]
     const targetKey = acc.authMethod === 'idc' ? 'kirocli:odic:token' : 'kirocli:social:token'
     const row = rows.find((r) => r.key === targetKey || r.key.endsWith(targetKey))

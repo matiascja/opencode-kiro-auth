@@ -1,19 +1,39 @@
-# OpenCode Kiro Auth Plugin (fork: IDC ghost-account fix)
+# opencode-kiro-auth (matiascja fork)
 
-[![npm version](https://img.shields.io/npm/v/@zhafron/opencode-kiro-auth)](https://www.npmjs.com/package/@zhafron/opencode-kiro-auth)
-[![npm downloads](https://img.shields.io/npm/dm/@zhafron/opencode-kiro-auth)](https://www.npmjs.com/package/@zhafron/opencode-kiro-auth)
-[![license](https://img.shields.io/npm/l/@zhafron/opencode-kiro-auth)](https://www.npmjs.com/package/@zhafron/opencode-kiro-auth)
+**This is a private fork.** It is NOT published to npm and is not the same package as
+`@zhafron/opencode-kiro-auth`. Always install it via `file://` pointing at a local clone
+of THIS repo (`matiascja/opencode-kiro-auth`), never via `npm install @zhafron/...` — that
+resolves a different, independently-versioned package that may register the OpenCode
+provider under a different id (`kiro` instead of `kiro-auth`; see "Provider id" below).
 
-OpenCode plugin for AWS Kiro (CodeWhisperer) providing access to Claude Sonnet and Haiku
-models with substantial trial quotas.
+OpenCode plugin for AWS Kiro (CodeWhisperer) providing access to Claude, GPT 5.6, and
+open-weight models via Kiro's CodeWhisperer backend.
 
-> Fork of [`tickernelz/opencode-kiro-auth`](https://github.com/tickernelz/opencode-kiro-auth).
-> Adds a fix for IAM Identity Center (IDC) deployments whose corporate sessions force a
-> `kiro-cli login` every few hours. Upstream rebuilt account ids on every login because
-> IDC rotates the OIDC `clientId`, leaving stale "Invalid refresh token" rows in
-> `kiro.db`. This fork keeps a single stable IDC account row across reauths.
+> Fork of [`tickernelz/opencode-kiro-auth`](https://github.com/tickernelz/opencode-kiro-auth),
+> merged forward from upstream `v1.11.6`. Adds a fix for IAM Identity Center (IDC)
+> deployments whose corporate sessions force a `kiro-cli login` every few hours. Upstream
+> historically rebuilt account ids on every login because IDC rotates the OIDC `clientId`,
+> leaving stale "Invalid refresh token" rows in `kiro.db`. This fork keeps a single stable
+> IDC account row across reauths (upstream later converged on an equivalent fix
+> independently — see `createDeterministicAccountId` for the merged logic).
 
-## Fork changes vs upstream `v1.10.1`
+## Provider id: `kiro-auth`, not `kiro`
+
+This fork intentionally registers the OpenCode provider as **`kiro-auth`**. Upstream used
+`kiro-auth` in `v1.10.x`, then reverted to **`kiro`** starting in `v1.11.0`. If you (or
+anyone using this environment's `opencode.json`, SDD profiles, or wiki docs) ever install
+the real npm package `@zhafron/opencode-kiro-auth` without pinning to `1.10.x`, you will
+get the `kiro` provider instead — and every `kiro-auth/<model>` reference in this
+environment's configs will fail to resolve with an error like
+`"undefined/chat/completions" cannot be parsed as a URL`, and models added after Opus 4.6
+(Opus 4.7+) will appear missing because they are exposed under a provider id you're not
+referencing.
+
+**There must be only one "real" install of Kiro auth in this environment**: this fork,
+loaded via `file:///.../opencode-kiro-auth/dist/index.js`. Do not additionally install
+`@zhafron/opencode-kiro-auth` from npm alongside it.
+
+## Fork changes vs upstream `v1.11.6`
 
 - **Stable IDC account id.** `createDeterministicAccountId` (and the mirror in
   `storage/locked-operations`) ignores the rotating `clientId` for `auth_method = idc`.
@@ -53,6 +73,8 @@ Branch: [`fix/idc-ghost-accounts`](https://github.com/matiascja/opencode-kiro-au
   SQLite.
 - **Native Thinking Mode**: Full support for Claude reasoning capabilities via virtual
   model mappings.
+- **Kiro Effort Mapping**: Maps OpenCode thinking budgets to Kiro's native effort
+  levels automatically.
 - **Automated Recovery**: Exponential backoff for rate limits and automated token
   refresh.
 - **IDC Ghost-Account Prevention (fork)**: Stable account id across `kiro-cli login`
@@ -60,18 +82,29 @@ Branch: [`fix/idc-ghost-accounts`](https://github.com/matiascja/opencode-kiro-au
 
 ## Installation
 
-### Use the published upstream package
+### Use this fork (the only supported install path)
 
-Add the plugin to your `opencode.json` or `opencode.jsonc`:
+This package is private and not published to npm. Clone this repo, build it, and point
+OpenCode's `plugin` entry at the built `dist/index.js`:
+
+```bash
+git clone https://github.com/matiascja/opencode-kiro-auth.git
+cd opencode-kiro-auth
+bun install
+bun test
+bun run build
+```
 
 ```json
 {
-  "plugin": ["@zhafron/opencode-kiro-auth"]
+  "plugin": ["file:///absolute/path/to/opencode-kiro-auth/dist/index.js"]
 }
 ```
 
-That's it. The plugin auto-injects every supported model under the `kiro-auth`
-provider, so a separate `provider.kiro-auth.models` block is no longer required.
+The plugin auto-injects every supported model under the `kiro-auth` provider, so a
+separate `provider.kiro-auth.models` block is not required unless you want to override
+defaults (see below). Restart any running OpenCode processes after building so they pick
+up the new `dist/`.
 
 ### Available models
 
@@ -104,13 +137,197 @@ take precedence; everything else still falls back to the plugin's defaults:
 
 ```json
 {
-  "plugin": ["@zhafron/opencode-kiro-auth"],
+  "plugin": ["file:///absolute/path/to/opencode-kiro-auth/dist/index.js"],
   "provider": {
     "kiro-auth": {
       "models": {
+        "claude-sonnet-4-5": {
+          "name": "Claude Sonnet 4.5",
+          "limit": { "context": 200000, "output": 64000 },
+          "modalities": { "input": ["text", "image", "pdf"], "output": ["text"] }
+        },
+        "claude-sonnet-4-5-thinking": {
+          "name": "Claude Sonnet 4.5 Thinking",
+          "limit": { "context": 200000, "output": 64000 },
+          "modalities": { "input": ["text", "image", "pdf"], "output": ["text"] },
+          "variants": {
+            "low": { "thinkingConfig": { "thinkingBudget": 8192 } },
+            "medium": { "thinkingConfig": { "thinkingBudget": 16384 } },
+            "high": { "thinkingConfig": { "thinkingBudget": 24576 } },
+            "max": { "thinkingConfig": { "thinkingBudget": 32768 } }
+          }
+        },
+        "claude-sonnet-4-6": {
+          "name": "Claude Sonnet 4.6",
+          "limit": { "context": 1000000, "output": 64000 },
+          "modalities": { "input": ["text", "image", "pdf"], "output": ["text"] }
+        },
+        "claude-sonnet-4-6-thinking": {
+          "name": "Claude Sonnet 4.6 Thinking",
+          "limit": { "context": 1000000, "output": 64000 },
+          "modalities": { "input": ["text", "image", "pdf"], "output": ["text"] },
+          "variants": {
+            "low": { "thinkingConfig": { "thinkingBudget": 8192 } },
+            "medium": { "thinkingConfig": { "thinkingBudget": 16384 } },
+            "high": { "thinkingConfig": { "thinkingBudget": 24576 } },
+            "max": { "thinkingConfig": { "thinkingBudget": 32768 } }
+          }
+        },
+        "claude-sonnet-5": {
+          "name": "Claude Sonnet 5",
+          "limit": { "context": 1000000, "output": 64000 },
+          "modalities": { "input": ["text", "image", "pdf"], "output": ["text"] }
+        },
+        "claude-sonnet-5-thinking": {
+          "name": "Claude Sonnet 5 Thinking",
+          "limit": { "context": 1000000, "output": 64000 },
+          "modalities": { "input": ["text", "image", "pdf"], "output": ["text"] },
+          "variants": {
+            "low": { "thinkingConfig": { "thinkingBudget": 8192 } },
+            "medium": { "thinkingConfig": { "thinkingBudget": 16384 } },
+            "high": { "thinkingConfig": { "thinkingBudget": 24576 } },
+            "max": { "thinkingConfig": { "thinkingBudget": 32768 } }
+          }
+        },
+        "claude-sonnet-5-1m": {
+          "name": "Claude Sonnet 5 (1M Context)",
+          "limit": { "context": 1000000, "output": 64000 },
+          "modalities": { "input": ["text", "image", "pdf"], "output": ["text"] }
+        },
+        "claude-sonnet-5-1m-thinking": {
+          "name": "Claude Sonnet 5 (1M Context) Thinking",
+          "limit": { "context": 1000000, "output": 64000 },
+          "modalities": { "input": ["text", "image", "pdf"], "output": ["text"] },
+          "variants": {
+            "low": { "thinkingConfig": { "thinkingBudget": 8192 } },
+            "medium": { "thinkingConfig": { "thinkingBudget": 16384 } },
+            "high": { "thinkingConfig": { "thinkingBudget": 24576 } },
+            "max": { "thinkingConfig": { "thinkingBudget": 32768 } }
+          }
+        },
+        "claude-haiku-4-5": {
+          "name": "Claude Haiku 4.5",
+          "limit": { "context": 200000, "output": 64000 },
+          "modalities": { "input": ["text", "image"], "output": ["text"] }
+        },
+        "claude-opus-4-5": {
+          "name": "Claude Opus 4.5",
+          "limit": { "context": 200000, "output": 64000 },
+          "modalities": { "input": ["text", "image", "pdf"], "output": ["text"] }
+        },
+        "claude-opus-4-5-thinking": {
+          "name": "Claude Opus 4.5 Thinking",
+          "limit": { "context": 200000, "output": 64000 },
+          "modalities": { "input": ["text", "image", "pdf"], "output": ["text"] },
+          "variants": {
+            "low": { "thinkingConfig": { "thinkingBudget": 8192 } },
+            "medium": { "thinkingConfig": { "thinkingBudget": 16384 } },
+            "high": { "thinkingConfig": { "thinkingBudget": 24576 } },
+            "max": { "thinkingConfig": { "thinkingBudget": 32768 } }
+          }
+        },
+        "claude-opus-4-6": {
+          "name": "Claude Opus 4.6",
+          "limit": { "context": 1000000, "output": 64000 },
+          "modalities": { "input": ["text", "image", "pdf"], "output": ["text"] }
+        },
+        "claude-opus-4-6-thinking": {
+          "name": "Claude Opus 4.6 Thinking",
+          "limit": { "context": 1000000, "output": 64000 },
+          "modalities": { "input": ["text", "image", "pdf"], "output": ["text"] },
+          "variants": {
+            "low": { "thinkingConfig": { "thinkingBudget": 8192 } },
+            "medium": { "thinkingConfig": { "thinkingBudget": 16384 } },
+            "high": { "thinkingConfig": { "thinkingBudget": 24576 } },
+            "max": { "thinkingConfig": { "thinkingBudget": 32768 } }
+          }
+        },
+        "claude-opus-4-6-1m": {
+          "name": "Claude Opus 4.6 (1M Context)",
+          "limit": { "context": 1000000, "output": 64000 },
+          "modalities": { "input": ["text", "image", "pdf"], "output": ["text"] }
+        },
+        "claude-opus-4-6-1m-thinking": {
+          "name": "Claude Opus 4.6 (1M Context) Thinking",
+          "limit": { "context": 1000000, "output": 64000 },
+          "modalities": { "input": ["text", "image", "pdf"], "output": ["text"] },
+          "variants": {
+            "low": { "thinkingConfig": { "thinkingBudget": 8192 } },
+            "medium": { "thinkingConfig": { "thinkingBudget": 16384 } },
+            "high": { "thinkingConfig": { "thinkingBudget": 24576 } },
+            "max": { "thinkingConfig": { "thinkingBudget": 32768 } }
+          }
+        },
         "claude-opus-4-7": {
-          "name": "Opus 4.7 (custom)",
+          "name": "Claude Opus 4.7",
+          "limit": { "context": 1000000, "output": 64000 },
+          "modalities": { "input": ["text", "image", "pdf"], "output": ["text"] }
+        },
+        "claude-opus-4-7-thinking": {
+          "name": "Claude Opus 4.7 Thinking",
+          "limit": { "context": 1000000, "output": 64000 },
+          "modalities": { "input": ["text", "image", "pdf"], "output": ["text"] },
+          "variants": {
+            "low": { "thinkingConfig": { "thinkingBudget": 8192 } },
+            "medium": { "thinkingConfig": { "thinkingBudget": 16384 } },
+            "high": { "thinkingConfig": { "thinkingBudget": 24576 } },
+            "max": { "thinkingConfig": { "thinkingBudget": 32768 } }
+          }
+        },
+        "claude-sonnet-4-5-1m": {
+          "name": "Claude Sonnet 4.5 (1M Context)",
+          "limit": { "context": 1000000, "output": 64000 },
+          "modalities": { "input": ["text", "image", "pdf"], "output": ["text"] }
+        },
+        "claude-sonnet-4-6-1m": {
+          "name": "Claude Sonnet 4.6 (1M Context)",
+          "limit": { "context": 1000000, "output": 64000 },
+          "modalities": { "input": ["text", "image", "pdf"], "output": ["text"] }
+        },
+        "claude-sonnet-4-6-1m-thinking": {
+          "name": "Claude Sonnet 4.6 (1M Context) Thinking",
+          "limit": { "context": 1000000, "output": 64000 },
+          "modalities": { "input": ["text", "image", "pdf"], "output": ["text"] },
+          "variants": {
+            "low": { "thinkingConfig": { "thinkingBudget": 8192 } },
+            "medium": { "thinkingConfig": { "thinkingBudget": 16384 } },
+            "high": { "thinkingConfig": { "thinkingBudget": 24576 } },
+            "max": { "thinkingConfig": { "thinkingBudget": 32768 } }
+          }
+        },
+        "auto": { "name": "Auto (1.0x)" },
+        "claude-sonnet-4": {
+          "name": "Claude Sonnet 4.0 (1.3x)",
           "limit": { "context": 200000, "output": 64000 }
+        },
+        "gpt-5.6-sol": {
+          "name": "GPT 5.6 Sol (2.4x)",
+          "limit": { "context": 272000, "output": 64000 }
+        },
+        "gpt-5.6-terra": {
+          "name": "GPT 5.6 Terra (1.2x)",
+          "limit": { "context": 272000, "output": 64000 }
+        },
+        "gpt-5.6-luna": {
+          "name": "GPT 5.6 Luna (0.6x)",
+          "limit": { "context": 272000, "output": 64000 }
+        },
+        "deepseek-3.2": {
+          "name": "DeepSeek 3.2 (0.25x)",
+          "limit": { "context": 128000, "output": 64000 }
+        },
+        "glm-5": { "name": "GLM-5 (0.5x)", "limit": { "context": 200000, "output": 64000 } },
+        "minimax-m2.5": {
+          "name": "MiniMax 2.5 (0.25x)",
+          "limit": { "context": 200000, "output": 64000 }
+        },
+        "minimax-m2.1": {
+          "name": "MiniMax 2.1 (0.15x)",
+          "limit": { "context": 200000, "output": 64000 }
+        },
+        "qwen3-coder-next": {
+          "name": "Qwen3 Coder Next (0.05x)",
+          "limit": { "context": 256000, "output": 64000 }
         }
       }
     }
@@ -118,42 +335,64 @@ take precedence; everything else still falls back to the plugin's defaults:
 }
 ```
 
-## Setup
+### Thinking Effort Configuration
 
-### Using this fork directly
-
-If you want the IDC ghost-account fix without waiting for an upstream release, point
-OpenCode at a local build of this fork instead of the npm package:
-
-```bash
-git clone https://github.com/matiascja/opencode-kiro-auth.git
-cd opencode-kiro-auth
-git checkout fix/idc-ghost-accounts
-bun install
-bun test
-bun run build
-```
-
-Then set the `plugin` entry in `opencode.json` to the built file:
+Configure Kiro effort per model in your OpenCode provider model definitions by setting
+`thinkingConfig.thinkingBudget` on each model variant. The plugin automatically maps
+those budgets to Kiro's native `effort` field for supported Claude models, so you do
+not need to hardcode a global `effort` value in `~/.config/opencode/kiro.json`.
 
 ```json
 {
-  "plugin": ["file:///absolute/path/to/opencode-kiro-auth/dist/index.js"]
+  "provider": {
+    "kiro": {
+      "models": {
+        "claude-opus-4-7-thinking": {
+          "name": "Claude Opus 4.7 Thinking",
+          "limit": { "context": 1000000, "output": 64000 },
+          "modalities": { "input": ["text", "image", "pdf"], "output": ["text"] },
+          "variants": {
+            "low": { "thinkingConfig": { "thinkingBudget": 8192 } },
+            "medium": { "thinkingConfig": { "thinkingBudget": 16384 } },
+            "high": { "thinkingConfig": { "thinkingBudget": 24576 } },
+            "max": { "thinkingConfig": { "thinkingBudget": 32768 } }
+          }
+        }
+      }
+    }
+  }
 }
 ```
 
-Restart any running OpenCode processes so they load the fork build instead of the
-upstream version. Already-running processes keep the previously loaded plugin in memory
-and may continue emitting old `Lock file is already being held` warnings until restarted.
+Budget mapping:
+
+| OpenCode budget | Kiro effort |
+| --------------- | ----------- |
+| `<= 10000` | `low` |
+| `<= 20000` | `medium` |
+| `<= 28000` | `high` |
+| `> 28000` | `max` |
+
+Use `~/.config/opencode/kiro.json` for plugin-wide behavior such as auth sync,
+account selection, retry limits, and `auto_effort_mapping`. A top-level `effort`
+setting is a global override for all supported models, not a per-model setting.
+
+## Setup
+
+Restart any running OpenCode processes after building so they load the fork build.
+Already-running processes keep the previously loaded plugin in memory and may continue
+emitting old `Lock file is already being held` warnings until restarted.
 
 1. **Authentication via Kiro CLI (Recommended)**:
    - Perform login directly in your terminal using `kiro-cli login`.
-   - The plugin will automatically detect and import your session on startup.
+   - The plugin automatically bootstraps a minimal `kiro-auth` placeholder in
+     OpenCode's `auth.json` when it detects the Kiro CLI database, then imports
+     and synchronizes your active session on startup.
    - For AWS IAM Identity Center (SSO/IDC), the plugin imports both the token and device
      registration (OIDC client credentials) from the `kiro-cli` database.
 2. **Direct Authentication**:
    - Run `opencode auth login`.
-   - Select `Other`, type `kiro`, and press enter.
+   - Select `Other`, type `kiro-auth`, and press enter.
    - You'll be prompted for your **IAM Identity Center Start URL** and **IAM Identity
      Center region** (`sso_region`).
      - Leave it blank to sign in with **AWS Builder ID**.
@@ -175,30 +414,19 @@ and may continue emitting old `Lock file is already being held` warnings until r
 
 ## Local plugin development
 
-OpenCode installs plugins into a cache directory (typically
-`~/.cache/opencode/node_modules`).
+The simplest way to test local changes is to point OpenCode directly at your local repo
+path in `opencode.json` or `opencode.jsonc`:
 
-The simplest way to test local changes (without publishing to npm) is to build this repo
-and hot-swap the cached plugin `dist/` folder:
-
-1. Build this repo: `bun run build` (or `npm run build`)
-2. Hot-swap `dist/` (creates a timestamped backup):
-
-```bash
-PLUGIN_DIR="$HOME/.cache/opencode/node_modules/@zhafron/opencode-kiro-auth"
-TS=$(date +%Y%m%d-%H%M%S)
-cp -a "$PLUGIN_DIR/dist" "$PLUGIN_DIR/dist.bak.$TS"
-rm -rf "$PLUGIN_DIR/dist"
-cp -a "/absolute/path/to/opencode-kiro-auth/dist" "$PLUGIN_DIR/dist"
-echo "Backup at: $PLUGIN_DIR/dist.bak.$TS"
+```json
+{
+  "plugin": ["/path/to/opencode-kiro-auth"]
+}
 ```
 
-Revert:
+Then build and restart OpenCode to pick up changes:
 
 ```bash
-PLUGIN_DIR="$HOME/.cache/opencode/node_modules/@zhafron/opencode-kiro-auth"
-rm -rf "$PLUGIN_DIR/dist"
-mv "$PLUGIN_DIR/dist.bak.YYYYMMDD-HHMMSS" "$PLUGIN_DIR/dist"
+npm run build
 ```
 
 ## Troubleshooting
@@ -257,48 +485,23 @@ Note for IDC/SSO (ODIC): the plugin may temporarily create an account with a pla
 email if it cannot fetch the real email during sync (e.g. offline).
 It will replace it with the real email once usage/email lookup succeeds.
 
-### Kiro CLI (Google/GitHub OAuth) users: plugin sync never runs
+### Kiro CLI (Google/GitHub OAuth) users: plugin sync does not start
 
 If you authenticated via `kiro-cli login` using Google or GitHub OAuth (not AWS Builder
-ID or IAM Identity Center), the plugin's sync may never trigger.
-This happens because OpenCode requires a kiro entry in `auth.json` before making API
-requests, but the plugin loader only runs when a request is made.
+ID or IAM Identity Center), OpenCode still needs a stored `kiro` auth entry before it
+will call the plugin loader.
 
-**Workaround:** Add a minimal placeholder entry to `~/.local/share/opencode/auth.json`:
+The plugin now creates that minimal placeholder automatically when it detects the local
+Kiro CLI database. Restart OpenCode after `kiro-cli login`; the loader should then run
+and sync your actual tokens into `kiro.db`. The placeholder values are not used for API
+calls.
 
-```json
-{
-  "kiro": {
-    "type": "api",
-    "key": "placeholder"
-  }
-}
-```
-
-After adding this, OpenCode will treat the provider as connected, trigger the plugin
-loader, and the kiro-cli sync will populate `kiro.db` with your actual tokens.
-The placeholder values are not used for API calls.
+If bootstrap is skipped because `auth.json` is malformed, fix the JSON first. The plugin
+will not overwrite malformed auth files because they may contain other provider
+credentials.
 
 **Important:** Ensure `auto_sync_kiro_cli` is `true` in `~/.config/opencode/kiro.json`
-and that `kiro-cli login` succeeds before applying this workaround.
-
-### Error: ERR_INVALID_URL
-
-`TypeError [ERR_INVALID_URL]: "undefined/chat/completions" cannot be parsed as a URL`
-
-If this happens, check your auth.json in .local/share/opencode.
-example:
-
-```json
-{
-  "kiro": {
-    "type": "api",
-    "key": "whatever"
-  }
-}
-```
-
-## Configuration
+and that `kiro-cli login` succeeds.
 
 The plugin supports extensive configuration options.
 Edit `~/.config/opencode/kiro.json`:
@@ -317,6 +520,7 @@ Edit `~/.config/opencode/kiro.json`:
   "token_expiry_buffer_ms": 120000,
   "usage_sync_max_retries": 3,
   "usage_tracking_enabled": true,
+  "auto_effort_mapping": true,
   "enable_log_api_request": false
 }
 ```
@@ -341,6 +545,8 @@ Edit `~/.config/opencode/kiro.json`:
 - `auth_server_port_start`: Legacy/ignored (no local auth server).
 - `auth_server_port_range`: Legacy/ignored (no local auth server).
 - `usage_tracking_enabled`: Enable usage tracking and toast notifications.
+- `auto_effort_mapping`: Automatically map OpenCode thinking budgets to Kiro effort
+  levels for supported models (default: `true`).
 - `enable_log_api_request`: Enable detailed API request logging.
 
 ## Storage

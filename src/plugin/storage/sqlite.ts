@@ -1,4 +1,5 @@
-import { Database } from 'bun:sqlite'
+import type Libsql from 'libsql'
+import Database from 'libsql'
 import { existsSync, mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -17,7 +18,7 @@ function getBaseDir(): string {
 export const DB_PATH = join(getBaseDir(), 'kiro.db')
 
 export class KiroDatabase {
-  private db: Database
+  private db: Libsql.Database
   private path: string
 
   constructor(path: string = DB_PATH) {
@@ -25,12 +26,12 @@ export class KiroDatabase {
     const dir = join(path, '..')
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
     this.db = new Database(path)
-    this.db.run('PRAGMA busy_timeout = 5000')
+    this.db.pragma('busy_timeout = 5000')
     this.init()
   }
   private init() {
-    this.db.run('PRAGMA journal_mode = WAL')
-    this.db.run(`
+    this.db.pragma('journal_mode = WAL')
+    this.db.exec(`
       CREATE TABLE IF NOT EXISTS accounts (
         id TEXT PRIMARY KEY, email TEXT NOT NULL, auth_method TEXT NOT NULL,
         region TEXT NOT NULL, oidc_region TEXT, client_id TEXT, client_secret TEXT, profile_arn TEXT,
@@ -65,12 +66,12 @@ export class KiroDatabase {
       )
       if (toDrop.length === 0) return
       const stmt = this.db.prepare('DELETE FROM accounts WHERE id = ?')
-      this.db.run('BEGIN TRANSACTION')
+      this.db.exec('BEGIN TRANSACTION')
       try {
         for (const row of toDrop) stmt.run(row.id)
-        this.db.run('COMMIT')
+        this.db.exec('COMMIT')
       } catch (e) {
-        this.db.run('ROLLBACK')
+        this.db.exec('ROLLBACK')
       }
     } catch {
       // Best-effort cleanup. Never block plugin startup.
@@ -133,15 +134,15 @@ export class KiroDatabase {
       const merged = mergeAccounts(existing, [acc])
       const deduplicated = deduplicateAccounts(merged)
 
-      this.db.run('BEGIN TRANSACTION')
+      this.db.exec('BEGIN TRANSACTION')
       try {
         for (const account of deduplicated) {
           this.upsertAccountInternal(account)
         }
         this.deleteDedupedRows(existing, deduplicated)
-        this.db.run('COMMIT')
+        this.db.exec('COMMIT')
       } catch (e) {
-        this.db.run('ROLLBACK')
+        this.db.exec('ROLLBACK')
         throw e
       }
     })
@@ -153,15 +154,15 @@ export class KiroDatabase {
       const merged = mergeAccounts(existing, accounts)
       const deduplicated = deduplicateAccounts(merged)
 
-      this.db.run('BEGIN TRANSACTION')
+      this.db.exec('BEGIN TRANSACTION')
       try {
         for (const account of deduplicated) {
           this.upsertAccountInternal(account)
         }
         this.deleteDedupedRows(existing, deduplicated)
-        this.db.run('COMMIT')
+        this.db.exec('COMMIT')
       } catch (e) {
-        this.db.run('ROLLBACK')
+        this.db.exec('ROLLBACK')
         throw e
       }
     })
@@ -179,6 +180,87 @@ export class KiroDatabase {
     if (toDelete.length === 0) return
     const stmt = this.db.prepare('DELETE FROM accounts WHERE id = ?')
     for (const account of toDelete) stmt.run(account.id)
+  }
+
+  async markAccountsUnhealthy(ids: string[], reason: string): Promise<void> {
+    if (ids.length === 0) return
+
+    await withDatabaseLock(this.path, async () => {
+      const now = Date.now()
+
+      this.db.exec('BEGIN TRANSACTION')
+      try {
+        const stmt = this.db.prepare(
+          `
+            UPDATE accounts
+            SET is_healthy = 0,
+                unhealthy_reason = ?,
+                recovery_time = NULL,
+                fail_count = 10,
+                rate_limit_reset = 0,
+                last_sync = ?
+            WHERE id = ?
+          `
+        )
+
+        for (const id of ids) {
+          stmt.run(reason, now, id)
+        }
+
+        this.db.exec('COMMIT')
+      } catch (e) {
+        this.db.exec('ROLLBACK')
+        throw e
+      }
+    })
+  }
+
+  async cleanupTestAndStaleAccounts(staleDays = 30): Promise<number> {
+    const cutoffMs = Date.now() - staleDays * 24 * 60 * 60 * 1000
+    return withDatabaseLock(this.path, async () => {
+      const before = (this.db.prepare('SELECT COUNT(*) AS n FROM accounts').get() as { n: number })
+        .n
+      this.db
+        .prepare(
+          `DELETE FROM accounts
+           WHERE email = 'test@example.com'
+              OR email LIKE 'placeholder-%@awsapps.local'
+              OR (is_healthy = 0
+                  AND unhealthy_reason IN ('Account Suspended', 'ExpiredTokenException')
+                  AND (recovery_time IS NULL OR recovery_time < ?))`
+        )
+        .run(cutoffMs)
+      const after = (this.db.prepare('SELECT COUNT(*) AS n FROM accounts').get() as { n: number }).n
+      return before - after
+    })
+  }
+
+  async deleteStaleIdcDuplicates(
+    canonicalId: string,
+    email: string,
+    profileArn: string
+  ): Promise<void> {
+    await withDatabaseLock(this.path, async () => {
+      this.db
+        .prepare(
+          `DELETE FROM accounts
+           WHERE auth_method = 'idc'
+             AND email = ?
+             AND profile_arn = ?
+             AND id != ?`
+        )
+        .run(email, profileArn, canonicalId)
+      // Also clean up placeholder rows for the same profileArn.
+      this.db
+        .prepare(
+          `DELETE FROM accounts
+           WHERE auth_method = 'idc'
+             AND profile_arn = ?
+             AND email LIKE 'placeholder-%'
+             AND id != ?`
+        )
+        .run(profileArn, canonicalId)
+    })
   }
 
   private rowToAccount(row: any): ManagedAccount {

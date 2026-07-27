@@ -1,14 +1,71 @@
+import { tool } from '@opencode-ai/plugin'
 import { KIRO_CONSTANTS } from './constants.js'
 import { AuthHandler } from './core/auth/auth-handler.js'
 import { RequestHandler } from './core/request/request-handler.js'
 import { AccountCache } from './infrastructure/database/account-cache.js'
 import { AccountRepository } from './infrastructure/database/account-repository.js'
 import { AccountManager } from './plugin/accounts.js'
+import { bootstrapAuthIfNeeded } from './plugin/auth-bootstrap.js'
 import { loadConfig } from './plugin/config/index.js'
+import { formatWebSearchResults, kiroWebSearch } from './plugin/web-search.js'
 
 type ToastFunction = (message: string, variant: string) => void
 
+// This fork intentionally keeps the provider id as 'kiro-auth', diverging from
+// upstream (which reverted to 'kiro' in v1.11.0). Every opencode.json, SDD
+// profile, and wiki page in this environment references models under
+// `kiro-auth/*`. Do not rename this without migrating all of those configs.
 const KIRO_PROVIDER_ID = 'kiro-auth'
+
+// Register Kiro's server-side web search as a custom tool, when enabled and the
+// active account is Pro (has a profileArn). Returns an empty object otherwise so
+// nothing is advertised to the model on free accounts.
+//
+// The description is adapted from Kiro's own web_search tool spec so the model
+// gets the same guidance on when to search and how to attribute results.
+const WEB_SEARCH_DESCRIPTION = `Search the web using Kiro's built-in search engine. Returns titles, URLs, snippets, domains, and publish dates for a query. Billed as Kiro credits.
+
+## When to Use
+- The user asks for current or up-to-date information (pricing, versions, release notes, recent events, library APIs).
+- Verifying facts that may have changed recently, or details likely newer than the model's training data.
+- Looking up specifics of a library, framework, or tool that can't be reliably inferred from the codebase or context.
+
+## When NOT to Use
+- Basic concepts, historical facts, or well-established programming syntax the model already knows.
+- Anything answerable from the current repository, files, or conversation. Search the codebase first.
+
+## Query Tips
+- Keep queries focused; the query MUST be 200 characters or fewer (longer queries are rejected).
+- Rephrase the user's request into effective keywords. Run multiple focused searches for complex questions rather than one broad query.
+- The snippets often contain enough to answer directly; only fetch a full page (via a separate fetch tool) when you need more detail.
+
+## Using Results & Attribution
+- Prioritize the most recently published, authoritative sources (prefer official docs over blogs; use the domain to judge authority).
+- ALWAYS cite sources with inline links in the format [description](url).
+- Paraphrase and summarize; do not reproduce more than ~30 consecutive words verbatim from any single source. Preserve factual accuracy while condensing.`
+
+function buildTools(config: any, accountManager: AccountManager): Record<string, any> {
+  if (!config.web_search_enabled) return {}
+  const account = accountManager.getCurrentOrNext()
+  if (!account?.profileArn) return {}
+
+  return {
+    kiro_web_search: tool({
+      description: WEB_SEARCH_DESCRIPTION,
+      args: {
+        query: tool.schema.string().describe('The search query. Must be 200 characters or fewer.')
+      },
+      async execute(args: { query: string }) {
+        try {
+          const results = await kiroWebSearch(accountManager, args.query)
+          return formatWebSearchResults(results)
+        } catch (e) {
+          return `Web search failed: ${e instanceof Error ? e.message : String(e)}`
+        }
+      }
+    })
+  }
+}
 
 export const createKiroPlugin =
   (id: string) =>
@@ -28,15 +85,39 @@ export const createKiroPlugin =
 
     const requestHandler = new RequestHandler(accountManager, config, repository, client)
 
+    // Compute the base URL once so both the config hook and auth loader use the same value
+    const baseURL = KIRO_CONSTANTS.BASE_URL.replace('/generateAssistantResponse', '').replace(
+      '{{region}}',
+      config.default_region || 'us-east-1'
+    )
+
     return {
       config: async (input: any) => {
+        // Ensure there's an auth entry so OpenCode calls the loader on startup.
+        // This is a no-op if the entry already exists.
+        bootstrapAuthIfNeeded(id)
+
         if (!input.provider) input.provider = {}
         if (!input.provider[id]) input.provider[id] = {}
+        // Always set npm and api — these must be present regardless of whether
+        // the user has already defined the provider in their opencode.json.
         input.provider[id].npm = '@ai-sdk/openai-compatible'
+        // Set the base URL at the provider level. OpenCode reads provider.api as
+        // model.api.url, which resolveSDK() uses to construct the endpoint URL.
+        // Only set if not already overridden by the user.
+        if (!input.provider[id].api) {
+          input.provider[id].api = baseURL
+        }
         if (!input.provider[id].models) {
           input.provider[id].models = {
             auto: {
               name: 'Auto (1.0x)',
+              limit: { context: 200000, output: 64000 },
+              modalities: { input: ['text', 'image', 'pdf'], output: ['text'] }
+            },
+            // Claude Sonnet
+            'claude-sonnet-4': {
+              name: 'Claude Sonnet 4.0 (1.3x)',
               limit: { context: 200000, output: 64000 },
               modalities: { input: ['text', 'image', 'pdf'], output: ['text'] }
             },
@@ -115,16 +196,27 @@ export const createKiroPlugin =
                 max: { thinkingConfig: { thinkingBudget: 32768 } }
               }
             },
-            'claude-sonnet-4': {
-              name: 'Claude Sonnet 4.0 (1.3x)',
-              limit: { context: 200000, output: 64000 },
+            'claude-sonnet-5-1m': {
+              name: 'Claude Sonnet 5 (1M Context)',
+              limit: { context: 1000000, output: 64000 },
               modalities: { input: ['text', 'image', 'pdf'], output: ['text'] }
+            },
+            'claude-sonnet-5-1m-thinking': {
+              name: 'Claude Sonnet 5 (1M Context) Thinking',
+              limit: { context: 1000000, output: 64000 },
+              modalities: { input: ['text', 'image', 'pdf'], output: ['text'] },
+              variants: {
+                low: { thinkingConfig: { thinkingBudget: 8192 } },
+                medium: { thinkingConfig: { thinkingBudget: 16384 } },
+                max: { thinkingConfig: { thinkingBudget: 32768 } }
+              }
             },
             'claude-3-7-sonnet': {
               name: 'Claude 3.7 Sonnet',
               limit: { context: 200000, output: 64000 },
               modalities: { input: ['text', 'image', 'pdf'], output: ['text'] }
             },
+            // Claude Haiku
             'claude-haiku-4-5': {
               name: 'Claude Haiku 4.5 (0.4x)',
               limit: { context: 200000, output: 64000 },
@@ -140,6 +232,7 @@ export const createKiroPlugin =
                 max: { thinkingConfig: { thinkingBudget: 32768 } }
               }
             },
+            // Claude Opus
             'claude-opus-4-5': {
               name: 'Claude Opus 4.5 (2.2x)',
               limit: { context: 200000, output: 64000 },
@@ -215,11 +308,7 @@ export const createKiroPlugin =
                 max: { thinkingConfig: { thinkingBudget: 32768 } }
               }
             },
-            'nova-swe': {
-              name: 'Nova SWE',
-              limit: { context: 128000, output: 64000 },
-              modalities: { input: ['text'], output: ['text'] }
-            },
+            // OpenAI GPT 5.6 (via Kiro, no configurable effort — hidden chain-of-thought)
             'gpt-5.6-sol': {
               name: 'GPT 5.6 Sol (2.4x)',
               limit: { context: 272000, output: 64000 },
@@ -235,9 +324,15 @@ export const createKiroPlugin =
               limit: { context: 272000, output: 64000 },
               modalities: { input: ['text'], output: ['text'] }
             },
-            'gpt-oss-120b': {
-              name: 'GPT OSS 120B',
+            // Open weight models
+            'deepseek-3.2': {
+              name: 'DeepSeek 3.2 (0.25x)',
               limit: { context: 128000, output: 64000 },
+              modalities: { input: ['text'], output: ['text'] }
+            },
+            'glm-5': {
+              name: 'GLM-5 (0.5x)',
+              limit: { context: 200000, output: 64000 },
               modalities: { input: ['text'], output: ['text'] }
             },
             'minimax-m2': {
@@ -247,11 +342,6 @@ export const createKiroPlugin =
             },
             'minimax-m2.5': {
               name: 'MiniMax M2.5 (0.25x)',
-              limit: { context: 200000, output: 64000 },
-              modalities: { input: ['text'], output: ['text'] }
-            },
-            'glm-5': {
-              name: 'GLM-5 (0.5x)',
               limit: { context: 200000, output: 64000 },
               modalities: { input: ['text'], output: ['text'] }
             },
@@ -265,14 +355,20 @@ export const createKiroPlugin =
               limit: { context: 128000, output: 64000 },
               modalities: { input: ['text'], output: ['text'] }
             },
-            'deepseek-3.2': {
-              name: 'DeepSeek 3.2 (0.25x)',
-              limit: { context: 128000, output: 64000 },
-              modalities: { input: ['text'], output: ['text'] }
-            },
             'qwen3-coder-next': {
               name: 'Qwen3 Coder Next (0.05x)',
               limit: { context: 256000, output: 64000 },
+              modalities: { input: ['text'], output: ['text'] }
+            },
+            // Legacy / internal models kept for backwards compatibility
+            'nova-swe': {
+              name: 'Nova SWE',
+              limit: { context: 128000, output: 64000 },
+              modalities: { input: ['text'], output: ['text'] }
+            },
+            'gpt-oss-120b': {
+              name: 'GPT OSS 120B',
+              limit: { context: 128000, output: 64000 },
               modalities: { input: ['text'], output: ['text'] }
             }
           }
@@ -286,10 +382,10 @@ export const createKiroPlugin =
 
           return {
             apiKey: '',
-            baseURL: KIRO_CONSTANTS.BASE_URL.replace('/generateAssistantResponse', '').replace(
-              '{{region}}',
-              config.default_region || 'us-east-1'
-            ),
+            // Provide baseURL explicitly so the @ai-sdk/openai-compatible provider
+            // always has a valid URL. The custom fetch below intercepts all Kiro
+            // API calls, so this value is only used for URL construction.
+            baseURL,
             fetch: (input: any, init?: any) => requestHandler.handle(input, init, showToast)
           }
         },
@@ -307,14 +403,19 @@ export const createKiroPlugin =
               ...modelInfo,
               api: {
                 ...(modelInfo.api || {}),
-                npm: '@ai-sdk/openai-compatible'
+                npm: '@ai-sdk/openai-compatible',
+                // Ensure url is always set. modelInfo.api.url should already be
+                // populated from the config hook's provider.api field, but we
+                // set it explicitly as a fallback for any edge cases.
+                url: modelInfo.api?.url || baseURL
               }
             }
           }
 
           return normalized
         }
-      }
+      },
+      tool: buildTools(config, accountManager)
     }
   }
 

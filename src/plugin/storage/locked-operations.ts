@@ -45,11 +45,15 @@ export function createDeterministicId(
   clientId?: string,
   profileArn?: string
 ): string {
-  // Mirror the policy in `accounts.ts/createDeterministicAccountId`: do NOT
-  // include `clientId` for IDC because every `kiro-cli login` rotates it.
-  const idClientId = authMethod === 'idc' ? '' : clientId || ''
-  const parts = [email, authMethod, idClientId, profileArn || ''].join(':')
-  return createHash('sha256').update(parts).digest('hex')
+  // Must exactly mirror `accounts.ts/createDeterministicAccountId` — this is a
+  // thin duplicate kept here to avoid a circular import between accounts.ts
+  // and locked-operations.ts. IDC clientId rotates on every `kiro-cli login`,
+  // so it's excluded from the key for that auth method.
+  const key =
+    authMethod === 'idc'
+      ? `${email}:${authMethod}:${profileArn || ''}`
+      : `${email}:${authMethod}:${clientId || ''}:${profileArn || ''}`
+  return createHash('sha256').update(key).digest('hex')
 }
 
 export function mergeAccounts(
@@ -66,10 +70,11 @@ export function mergeAccounts(
     const existingAcc = accountMap.get(acc.id)
 
     if (existingAcc) {
-      const incomingRecovered = acc.isHealthy && !isPermanentError(acc.unhealthyReason)
+      const incomingHasPermanentError = isPermanentError(acc.unhealthyReason)
+      const incomingRecovered = acc.isHealthy && !incomingHasPermanentError
       const hasPermanentError =
         !incomingRecovered &&
-        (isPermanentError(existingAcc.unhealthyReason) || isPermanentError(acc.unhealthyReason))
+        (isPermanentError(existingAcc.unhealthyReason) || incomingHasPermanentError)
 
       accountMap.set(acc.id, {
         ...existingAcc,
@@ -81,13 +86,15 @@ export function mergeAccounts(
           existingAcc.rateLimitResetTime || 0,
           acc.rateLimitResetTime || 0
         ),
-        isHealthy: hasPermanentError ? false : existingAcc.isHealthy || acc.isHealthy,
+        isHealthy: incomingRecovered
+          ? true
+          : hasPermanentError
+            ? false
+            : existingAcc.isHealthy || acc.isHealthy,
         unhealthyReason: incomingRecovered
-          ? acc.unhealthyReason
-          : existingAcc.unhealthyReason || acc.unhealthyReason,
-        recoveryTime: incomingRecovered
-          ? acc.recoveryTime
-          : existingAcc.recoveryTime || acc.recoveryTime,
+          ? undefined
+          : acc.unhealthyReason || existingAcc.unhealthyReason,
+        recoveryTime: incomingRecovered ? undefined : acc.recoveryTime || existingAcc.recoveryTime,
         failCount: incomingRecovered
           ? acc.failCount || 0
           : Math.max(existingAcc.failCount || 0, acc.failCount || 0),
