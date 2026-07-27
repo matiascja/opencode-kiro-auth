@@ -13,7 +13,15 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  rmSync(dir, { recursive: true, force: true })
+  // On Windows, libsql/bun:sqlite can keep a lock on the temp DB file briefly
+  // after close(), which makes rmSync throw EBUSY even though it's not a real
+  // functional problem (confirmed against a pristine upstream v1.11.6
+  // checkout — same EBUSY there). Best-effort cleanup only.
+  try {
+    rmSync(dir, { recursive: true, force: true })
+  } catch {
+    // ignore transient Windows file-lock cleanup failures
+  }
 })
 
 describe('readActiveProfileArnFromKiroCli', () => {
