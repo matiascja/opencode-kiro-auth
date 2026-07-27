@@ -308,6 +308,21 @@ export const createKiroPlugin =
                 max: { thinkingConfig: { thinkingBudget: 32768 } }
               }
             },
+            'claude-opus-5': {
+              name: 'Claude Opus 5 (2.2x)',
+              limit: { context: 1000000, output: 64000 },
+              modalities: { input: ['text', 'image', 'pdf'], output: ['text'] }
+            },
+            'claude-opus-5-thinking': {
+              name: 'Claude Opus 5 Thinking (2.2x)',
+              limit: { context: 1000000, output: 64000 },
+              modalities: { input: ['text', 'image', 'pdf'], output: ['text'] },
+              variants: {
+                low: { thinkingConfig: { thinkingBudget: 8192 } },
+                medium: { thinkingConfig: { thinkingBudget: 16384 } },
+                max: { thinkingConfig: { thinkingBudget: 32768 } }
+              }
+            },
             // OpenAI GPT 5.6 (via Kiro, no configurable effort — hidden chain-of-thought)
             'gpt-5.6-sol': {
               name: 'GPT 5.6 Sol (2.4x)',

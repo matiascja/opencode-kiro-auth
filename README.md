@@ -121,6 +121,7 @@ Default models exposed by the plugin (all reachable as `kiro-auth/<id>`):
 | Opus 4.6   | `claude-opus-4-6`   | `claude-opus-4-6-thinking`   | `claude-opus-4-6-1m`   | `claude-opus-4-6-1m-thinking`   |
 | Opus 4.7   | `claude-opus-4-7`   | `claude-opus-4-7-thinking`   | -                      | -                               |
 | Opus 4.8   | `claude-opus-4-8`   | `claude-opus-4-8-thinking`   | -                      | -                               |
+| Opus 5     | `claude-opus-5`     | `claude-opus-5-thinking`     | -                      | -                               |
 
 Other models: `auto`, `nova-swe`, `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`,
 `gpt-oss-120b`, `minimax-m2`, `minimax-m2.5`, `minimax-m2.1`, `kimi-k2-thinking`,
@@ -388,6 +389,8 @@ emitting old `Lock file is already being held` warnings until restarted.
    - The plugin automatically bootstraps a minimal `kiro-auth` placeholder in
      OpenCode's `auth.json` when it detects the Kiro CLI database, then imports
      and synchronizes your active session on startup.
+   - On Windows, OpenCode stores auth at `~/.local/share/opencode/auth.json`, while
+     Kiro CLI stores its database at `%LOCALAPPDATA%\Kiro-Cli\data.sqlite3`.
    - For AWS IAM Identity Center (SSO/IDC), the plugin imports both the token and device
      registration (OIDC client credentials) from the `kiro-cli` database.
 2. **Direct Authentication**:
@@ -472,7 +475,9 @@ This happens when the plugin has no records in `~/.config/opencode/kiro.db`.
 
 1. Ensure `kiro-cli login` succeeds.
 2. Ensure `auto_sync_kiro_cli` is `true` in `~/.config/opencode/kiro.json`.
-3. Retry the request; the plugin will attempt a Kiro CLI sync when it detects zero
+3. On Windows, verify `%LOCALAPPDATA%\Kiro-Cli\data.sqlite3` exists. Use
+   `KIROCLI_DB_PATH` only if your Kiro CLI database is in a non-standard location.
+4. Retry the request; the plugin will attempt a Kiro CLI sync when it detects zero
    accounts.
 
 ### Note: `/connect` vs `opencode auth login`
@@ -488,7 +493,7 @@ It will replace it with the real email once usage/email lookup succeeds.
 ### Kiro CLI (Google/GitHub OAuth) users: plugin sync does not start
 
 If you authenticated via `kiro-cli login` using Google or GitHub OAuth (not AWS Builder
-ID or IAM Identity Center), OpenCode still needs a stored `kiro` auth entry before it
+ID or IAM Identity Center), OpenCode still needs a stored `kiro-auth` auth entry before it
 will call the plugin loader.
 
 The plugin now creates that minimal placeholder automatically when it detects the local

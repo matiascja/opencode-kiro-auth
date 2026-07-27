@@ -21,6 +21,11 @@ describe('resolveKiroModel', () => {
     expect(resolveKiroModel('claude-opus-4-8-thinking')).toBe('claude-opus-4.8')
   })
 
+  test('resolves claude-opus-5 slugs', () => {
+    expect(resolveKiroModel('claude-opus-5')).toBe('claude-opus-5')
+    expect(resolveKiroModel('claude-opus-5-thinking')).toBe('claude-opus-5')
+  })
+
   test('resolves claude-sonnet-5 slugs', () => {
     expect(resolveKiroModel('claude-sonnet-5')).toBe('claude-sonnet-5')
     expect(resolveKiroModel('claude-sonnet-5-thinking')).toBe('claude-sonnet-5')

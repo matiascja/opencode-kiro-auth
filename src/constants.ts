@@ -78,6 +78,8 @@ export const MODEL_MAPPING: Record<string, string> = {
   'claude-opus-4-7-thinking': 'claude-opus-4.7',
   'claude-opus-4-8': 'claude-opus-4.8',
   'claude-opus-4-8-thinking': 'claude-opus-4.8',
+  'claude-opus-5': 'claude-opus-5',
+  'claude-opus-5-thinking': 'claude-opus-5',
   // OpenAI GPT 5.6 (via Kiro, no configurable effort — hidden chain-of-thought)
   'gpt-5.6-sol': 'gpt-5.6-sol',
   'gpt-5.6-terra': 'gpt-5.6-terra',
