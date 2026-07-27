@@ -8,8 +8,8 @@ export function getCliDbPath(): string {
   const p = platform()
   if (p === 'win32')
     return join(
-      process.env.APPDATA || join(homedir(), 'AppData', 'Roaming'),
-      'kiro-cli',
+      process.env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local'),
+      'Kiro-Cli',
       'data.sqlite3'
     )
   if (p === 'darwin')

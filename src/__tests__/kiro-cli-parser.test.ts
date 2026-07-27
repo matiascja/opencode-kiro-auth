@@ -1,4 +1,5 @@
-import { describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, test } from 'bun:test'
+import { join } from 'node:path'
 import {
   findClientCredsRecursive,
   getCliDbPath,
@@ -7,13 +8,30 @@ import {
   safeJsonParse
 } from '../plugin/sync/kiro-cli-parser.js'
 
+const originalKiroCliDbPath = process.env.KIROCLI_DB_PATH
+const originalLocalAppData = process.env.LOCALAPPDATA
+
+afterEach(() => {
+  if (originalKiroCliDbPath === undefined) delete process.env.KIROCLI_DB_PATH
+  else process.env.KIROCLI_DB_PATH = originalKiroCliDbPath
+
+  if (originalLocalAppData === undefined) delete process.env.LOCALAPPDATA
+  else process.env.LOCALAPPDATA = originalLocalAppData
+})
+
 // ── getCliDbPath ──────────────────────────────────────────────────────────────
 
 describe('getCliDbPath', () => {
   test('respects KIROCLI_DB_PATH override', () => {
     process.env.KIROCLI_DB_PATH = '/custom/path.db'
     expect(getCliDbPath()).toBe('/custom/path.db')
+  })
+
+  test.skipIf(process.platform !== 'win32')('uses the Kiro CLI LocalAppData database', () => {
     delete process.env.KIROCLI_DB_PATH
+    process.env.LOCALAPPDATA = 'C:\\Users\\test\\AppData\\Local'
+
+    expect(getCliDbPath()).toBe(join('C:\\Users\\test\\AppData\\Local', 'Kiro-Cli', 'data.sqlite3'))
   })
 
   test('returns a string path without override', () => {

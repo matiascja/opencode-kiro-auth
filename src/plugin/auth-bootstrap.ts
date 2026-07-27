@@ -13,10 +13,7 @@ import * as logger from './logger.js'
 import { getCliDbPath } from './sync/kiro-cli-parser.js'
 
 function getOpenCodeAuthPath(): string {
-  const dataRoot =
-    process.platform === 'win32'
-      ? process.env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local')
-      : process.env.XDG_DATA_HOME || join(homedir(), '.local', 'share')
+  const dataRoot = process.env.XDG_DATA_HOME || join(homedir(), '.local', 'share')
 
   return join(dataRoot, 'opencode', 'auth.json')
 }

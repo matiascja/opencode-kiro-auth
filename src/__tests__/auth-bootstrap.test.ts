@@ -31,14 +31,13 @@ afterEach(() => {
   else process.env.KIROCLI_DB_PATH = originalKiroCliDbPath
 })
 
-// getOpenCodeAuthPath() reads LOCALAPPDATA on win32 and XDG_DATA_HOME/HOME
-// elsewhere. Both must be redirected into the temp fixture dir, or these tests
-// will read/write the developer's real OpenCode auth.json.
+// Redirect the OpenCode data root into the fixture so these tests never touch
+// the developer's real auth.json.
 function setupBootstrapFixture() {
   const home = mkdtempSync(join(tmpdir(), 'kiro-auth-bootstrap-'))
   process.env.HOME = home
   process.env.XDG_DATA_HOME = join(home, '.local', 'share')
-  process.env.LOCALAPPDATA = join(home, '.local', 'share')
+  process.env.LOCALAPPDATA = join(home, 'AppData', 'Local')
 
   const cliDbPath = join(home, 'kiro-cli.sqlite3')
   writeFileSync(cliDbPath, '')
