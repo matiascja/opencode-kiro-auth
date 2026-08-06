@@ -190,12 +190,17 @@ export class RequestHandler {
         }
 
         if (httpStatus) {
+          const retryAfter =
+            e?.$response?.headers?.['retry-after'] ?? e?.$response?.headers?.['Retry-After']
           const mockResponse = new Response(
             JSON.stringify({ message: e.message, __type: e.name }),
             {
               status: httpStatus,
               statusText: e.name || 'Error',
-              headers: { 'Content-Type': 'application/json' }
+              headers: {
+                'Content-Type': 'application/json',
+                ...(retryAfter != null ? { 'Retry-After': String(retryAfter) } : {})
+              }
             }
           )
 

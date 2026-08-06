@@ -92,18 +92,26 @@ export class ErrorHandler {
       this.accountManager.markRateLimited(account, w)
       await this.repository.batchSave(this.accountManager.getAccounts())
       const count = this.accountManager.getAccountCount()
+      const retriesExhausted = context.retry >= this.config.rate_limit_max_retries
       logger.warn('Rate limited (429)', {
         email: account.email,
         retry_after_ms: w,
         account_count: count,
-        will_switch_account: count > 1
+        retry: context.retry,
+        max_retries: this.config.rate_limit_max_retries,
+        will_switch_account: count > 1 && !retriesExhausted
       })
+      if (retriesExhausted) {
+        showToast('429: Rate limited. Retries exhausted.', 'error')
+        return { shouldRetry: false }
+      }
+      const newContext = { ...context, retry: context.retry + 1 }
       if (count > 1) {
-        return { shouldRetry: true, switchAccount: true }
+        return { shouldRetry: true, newContext, switchAccount: true }
       }
       showToast(`429: Rate limited. Waiting ${Math.ceil(w / 1000)}s...`, 'warning')
       await this.sleep(w)
-      return { shouldRetry: true }
+      return { shouldRetry: true, newContext }
     }
 
     if (response.status === 402 || response.status === 403) {
