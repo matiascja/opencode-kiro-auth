@@ -25,6 +25,10 @@ describe('isPermanentError', () => {
     expect(isPermanentError('Error: Invalid refresh token provided')).toBe(true)
   })
 
+  test('detects Invalid token provided from refresh endpoint', () => {
+    expect(isPermanentError('Refresh failed: Invalid token provided')).toBe(true)
+  })
+
   test('detects Invalid grant provided', () => {
     expect(isPermanentError('Invalid grant provided')).toBe(true)
   })
