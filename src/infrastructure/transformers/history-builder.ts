@@ -56,7 +56,7 @@ export function collapseAgenticLoops(history: CodeWhispererMessage[]): CodeWhisp
           } else {
             result.push({
               assistantResponseMessage: {
-                content: '[system: tool calling continues]',
+                content: '',
                 toolUses: asst!.assistantResponseMessage!.toolUses
               }
             })
