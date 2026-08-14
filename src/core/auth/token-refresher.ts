@@ -96,8 +96,12 @@ export class TokenRefresher {
         this.config.token_expiry_buffer_ms
       )
     ) {
+      // Keep the in-memory pool aligned with the credentials recovered on disk.
+      // Otherwise the next retry selects the same stale account until the
+      // request hits max_request_iterations; restarting only masks that loop.
+      this.accountManager.addAccount(stillAcc)
       showToast('Credentials recovered from Kiro CLI sync.', 'info')
-      return { account: stillAcc, shouldContinue: true }
+      return { account: stillAcc, shouldContinue: false }
     }
 
     if (
