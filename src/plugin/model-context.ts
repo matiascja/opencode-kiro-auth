@@ -22,13 +22,21 @@ export const CONTEXT_200K: ContextLimit = { context: 200000, output: 64000 }
 export const CONTEXT_1M: ContextLimit = { context: 1000000, output: 64000 }
 
 /**
+ * Values below are cross-checked against Kiro's own catalog, which the Kiro CLI
+ * exposes with `kiro-cli chat --list-models --format json`
+ * (`models[].context_window_tokens`). That is the authoritative per-account view;
+ * re-run it after Kiro ships model changes to confirm these still agree.
+ */
+
+/**
  * Advertised context limits, keyed by the OpenCode-facing base model ID.
  *
  * `-thinking` companions share their base model's limit, so they are resolved by
  * stripping the suffix rather than duplicating entries.
  */
 export const MODEL_CONTEXT_LIMITS: Record<string, ContextLimit> = {
-  auto: CONTEXT_200K,
+  // Kiro's catalog reports 1M for `auto`, since routing can land on a 1M model.
+  auto: CONTEXT_1M,
 
   // Claude Sonnet
   'claude-sonnet-4': CONTEXT_200K,
@@ -52,7 +60,8 @@ export const MODEL_CONTEXT_LIMITS: Record<string, ContextLimit> = {
   'gpt-5.6-luna': CONTEXT_1M,
 
   // Open weight models
-  'deepseek-3.2': { context: 128000, output: 64000 },
+  // Kiro's catalog reports 164000 for DeepSeek 3.2, not the 128000 assumed before.
+  'deepseek-3.2': { context: 164000, output: 64000 },
   'glm-5': CONTEXT_200K,
   'minimax-m2.5': { context: 196000, output: 64000 },
   'minimax-m2.1': { context: 196000, output: 64000 },

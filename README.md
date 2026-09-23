@@ -121,8 +121,10 @@ Effort-capable Claude models receive a `-thinking` companion automatically. GPT
 
 ### Context windows
 
-Advertised context limits live in `src/plugin/model-context.ts`, and both the
-model registry and `getContextWindowSize` read from there. That matters because
+Advertised context limits live in `src/plugin/model-context.ts`, cross-checked
+against Kiro's own catalog (`kiro-cli chat --list-models --format json`, field
+`models[].context_window_tokens`). Both the model registry and
+`getContextWindowSize` read from there. That matters because
 the registry's `limit.context` drives OpenCode's context bar and auto-compaction,
 while `getContextWindowSize` converts Kiro's `contextUsagePercentage` into a token
 count. If the two disagree, a model can be truncated server-side while the client
