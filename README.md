@@ -119,6 +119,20 @@ Default models exposed by the plugin (all reachable as `kiro-auth/<id>`):
 Effort-capable Claude models receive a `-thinking` companion automatically. GPT
 5.6 models do not currently expose configurable thinking variants.
 
+### Context windows
+
+Advertised context limits live in `src/plugin/model-context.ts`, and both the
+model registry and `getContextWindowSize` read from there. That matters because
+the registry's `limit.context` drives OpenCode's context bar and auto-compaction,
+while `getContextWindowSize` converts Kiro's `contextUsagePercentage` into a token
+count. If the two disagree, a model can be truncated server-side while the client
+still believes it has headroom. A test asserts they stay equal.
+
+GPT 5.6 Sol, Terra, and Luna moved from 272K to a 1M window on 2026-09-14. Their
+credit multipliers now follow a two-tier model: requests up to 272K bill at the
+short-context rate and requests above it bill at double, which is why their
+display names carry both figures (for example `GPT 5.6 Sol (4.4x/8.8x)`).
+
 ### Override or extend models
 
 If you want to override defaults (for example, to rename or restrict models),
@@ -132,8 +146,8 @@ plugin registry, so include every model you still want to expose:
     "kiro-auth": {
       "models": {
         "gpt-5.6-sol": {
-          "name": "GPT 5.6 Sol (2.4x)",
-          "limit": { "context": 272000, "output": 64000 },
+          "name": "GPT 5.6 Sol (4.4x/8.8x)",
+          "limit": { "context": 1000000, "output": 64000 },
           "modalities": { "input": ["text"], "output": ["text"] }
         }
       }

@@ -1,4 +1,5 @@
 import { EFFORT_LEVELS, supportsEffort, supportsXHighEffort, THINKING_BUDGETS } from './effort.js'
+import { getAdvertisedContextLimit } from './model-context.js'
 import { resolveKiroModel } from './models.js'
 
 type Modalities = {
@@ -10,15 +11,11 @@ const TEXT_ONLY: Modalities = { input: ['text'], output: ['text'] }
 const TEXT_IMAGE: Modalities = { input: ['text', 'image'], output: ['text'] }
 const MULTIMODAL: Modalities = { input: ['text', 'image', 'pdf'], output: ['text'] }
 
-const CONTEXT_200K = { context: 200000, output: 64000 }
-const CONTEXT_1M = { context: 1000000, output: 64000 }
-
 interface ModelSpec {
   /** Display name, without the credit multiplier suffix. */
   name: string
   /** Kiro credit multiplier, rendered into the display name. */
   rate: string
-  limit: { context: number; output: number }
   modalities: Modalities
   /**
    * Emit a companion `-thinking` entry. Only set for Claude models that accept
@@ -35,33 +32,29 @@ interface ModelSpec {
  * reasoning contract and remain on their existing non-configurable request path.
  */
 const MODEL_SPECS: Record<string, ModelSpec> = {
-  auto: { name: 'Auto', rate: '1.0x', limit: CONTEXT_200K, modalities: MULTIMODAL },
+  auto: { name: 'Auto', rate: '1.0x', modalities: MULTIMODAL },
 
   // Claude Sonnet
   'claude-sonnet-4': {
     name: 'Claude Sonnet 4.0',
     rate: '1.3x',
-    limit: CONTEXT_200K,
     modalities: MULTIMODAL
   },
   'claude-sonnet-4-5': {
     name: 'Claude Sonnet 4.5',
     rate: '1.3x',
-    limit: CONTEXT_200K,
     modalities: MULTIMODAL,
     thinking: true
   },
   'claude-sonnet-4-6': {
     name: 'Claude Sonnet 4.6',
     rate: '1.3x',
-    limit: CONTEXT_1M,
     modalities: MULTIMODAL,
     thinking: true
   },
   'claude-sonnet-5': {
     name: 'Claude Sonnet 5',
     rate: '1.3x',
-    limit: CONTEXT_1M,
     modalities: MULTIMODAL,
     thinking: true
   },
@@ -70,7 +63,6 @@ const MODEL_SPECS: Record<string, ModelSpec> = {
   'claude-haiku-4-5': {
     name: 'Claude Haiku 4.5',
     rate: '0.4x',
-    limit: CONTEXT_200K,
     modalities: TEXT_IMAGE
   },
 
@@ -78,56 +70,52 @@ const MODEL_SPECS: Record<string, ModelSpec> = {
   'claude-opus-4-5': {
     name: 'Claude Opus 4.5',
     rate: '2.2x',
-    limit: CONTEXT_200K,
     modalities: MULTIMODAL,
     thinking: true
   },
   'claude-opus-4-6': {
     name: 'Claude Opus 4.6',
     rate: '2.2x',
-    limit: CONTEXT_1M,
     modalities: MULTIMODAL,
     thinking: true
   },
   'claude-opus-4-7': {
     name: 'Claude Opus 4.7',
     rate: '2.2x',
-    limit: CONTEXT_1M,
     modalities: MULTIMODAL,
     thinking: true
   },
   'claude-opus-4-8': {
     name: 'Claude Opus 4.8',
     rate: '2.2x',
-    limit: CONTEXT_1M,
     modalities: MULTIMODAL,
     thinking: true
   },
   'claude-opus-5': {
     name: 'Claude Opus 5',
     rate: '2.2x',
-    limit: CONTEXT_1M,
     modalities: MULTIMODAL,
     thinking: true
   },
 
-  // OpenAI GPT 5.6 (via Kiro, no configurable effort)
+  // OpenAI GPT 5.6 (via Kiro, no configurable effort).
+  //
+  // Kiro raised the GPT-5.6 family to a 1M context window on 2026-09-14 and moved
+  // billing to two tiers: requests up to 272K bill at the short-context rate, and
+  // requests above 272K bill at double. The rate label shows both, short/long.
   'gpt-5.6-sol': {
     name: 'GPT 5.6 Sol',
-    rate: '2.4x',
-    limit: { context: 272000, output: 64000 },
+    rate: '4.4x/8.8x',
     modalities: TEXT_ONLY
   },
   'gpt-5.6-terra': {
     name: 'GPT 5.6 Terra',
-    rate: '1.2x',
-    limit: { context: 272000, output: 64000 },
+    rate: '2.2x/4.4x',
     modalities: TEXT_ONLY
   },
   'gpt-5.6-luna': {
     name: 'GPT 5.6 Luna',
-    rate: '0.6x',
-    limit: { context: 272000, output: 64000 },
+    rate: '1.1x/2.2x',
     modalities: TEXT_ONLY
   },
 
@@ -135,26 +123,22 @@ const MODEL_SPECS: Record<string, ModelSpec> = {
   'deepseek-3.2': {
     name: 'DeepSeek 3.2',
     rate: '0.25x',
-    limit: { context: 128000, output: 64000 },
     modalities: TEXT_ONLY
   },
-  'glm-5': { name: 'GLM-5', rate: '0.5x', limit: CONTEXT_200K, modalities: TEXT_ONLY },
+  'glm-5': { name: 'GLM-5', rate: '0.5x', modalities: TEXT_ONLY },
   'minimax-m2.5': {
     name: 'MiniMax M2.5',
     rate: '0.25x',
-    limit: { context: 196000, output: 64000 },
     modalities: TEXT_ONLY
   },
   'minimax-m2.1': {
     name: 'MiniMax M2.1',
     rate: '0.15x',
-    limit: { context: 196000, output: 64000 },
     modalities: TEXT_ONLY
   },
   'qwen3-coder-next': {
     name: 'Qwen3 Coder Next',
     rate: '0.05x',
-    limit: { context: 256000, output: 64000 },
     modalities: TEXT_ONLY
   }
 }
@@ -189,9 +173,17 @@ export function buildModelRegistry(): Record<string, unknown> {
   const models: Record<string, unknown> = {}
 
   for (const [modelID, spec] of Object.entries(MODEL_SPECS)) {
+    // Limits come from model-context.ts, the same source getContextWindowSize
+    // reads, so what OpenCode is told and what usage estimation assumes cannot
+    // drift apart.
+    const limit = getAdvertisedContextLimit(modelID)
+    if (!limit) {
+      throw new Error(`Missing context limit for advertised model: ${modelID}`)
+    }
+
     models[modelID] = {
       name: `${spec.name} (${spec.rate})`,
-      limit: spec.limit,
+      limit,
       modalities: spec.modalities
     }
 
@@ -204,7 +196,7 @@ export function buildModelRegistry(): Record<string, unknown> {
 
     models[`${modelID}-thinking`] = {
       name: `${spec.name} Thinking (${spec.rate})`,
-      limit: spec.limit,
+      limit,
       modalities: spec.modalities,
       reasoning: true,
       interleaved: { field: 'reasoning_content' },

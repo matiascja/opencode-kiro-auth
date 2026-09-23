@@ -3,7 +3,7 @@ import { SUPPORTED_MODELS } from '../constants.js'
 import type { Effort } from '../plugin/config/schema.js'
 import { budgetToEffort, THINKING_BUDGETS } from '../plugin/effort.js'
 import { buildModelRegistry } from '../plugin/model-registry.js'
-import { resolveKiroModel } from '../plugin/models.js'
+import { getContextWindowSize, resolveKiroModel } from '../plugin/models.js'
 
 const registry = buildModelRegistry() as Record<string, any>
 
@@ -38,13 +38,31 @@ describe('model registry', () => {
   })
 
   test('advertises GPT 5.6 tiers without Claude thinking variants', () => {
+    // Kiro moved the GPT-5.6 family to a 1M window on 2026-09-14 and split billing
+    // into a short/long tier, which the rate label carries.
     expect(registry['gpt-5.6-sol']).toMatchObject({
-      name: 'GPT 5.6 Sol (2.4x)',
-      limit: { context: 272000, output: 64000 }
+      name: 'GPT 5.6 Sol (4.4x/8.8x)',
+      limit: { context: 1000000, output: 64000 }
     })
     expect(registry['gpt-5.6-terra']).toBeDefined()
     expect(registry['gpt-5.6-luna']).toBeDefined()
     expect(registry['gpt-5.6-sol-thinking']).toBeUndefined()
+  })
+
+  // The advertised limit drives OpenCode's context bar and auto-compaction, while
+  // getContextWindowSize turns Kiro's contextUsagePercentage into a token count.
+  // If they disagree, a model is silently truncated while the UI reports headroom.
+  test('advertised limits match the window used for usage estimation', () => {
+    for (const [modelID, model] of Object.entries(registry)) {
+      expect(getContextWindowSize(modelID)).toBe(model.limit.context)
+    }
+  })
+
+  test('thinking companions inherit their base model limit', () => {
+    for (const id of thinkingIDs) {
+      const base = id.replace(/-thinking$/, '')
+      expect(registry[id].limit).toEqual(registry[base].limit)
+    }
   })
 
   describe('reasoning capability flags', () => {
