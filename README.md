@@ -116,8 +116,31 @@ Default models exposed by the plugin (all reachable as `kiro-auth/<id>`):
 - GPT 5.6 Sol, Terra, and Luna.
 - DeepSeek 3.2, GLM-5, MiniMax M2.5/M2.1, and Qwen3 Coder Next.
 
-Effort-capable Claude models receive a `-thinking` companion automatically. GPT
-5.6 models do not currently expose configurable thinking variants.
+Effort-capable Claude models receive a `-thinking` companion automatically. The
+GPT 5.6 tiers carry reasoning on the base model instead, since their reasoning is
+intrinsic rather than opt-in, so there is no `gpt-5.6-sol-thinking`.
+
+### Reasoning effort
+
+Both families accept an effort level, but through different keys of
+`additionalModelRequestFields`, and Kiro rejects the wrong one:
+
+| Family | Key | Levels offered |
+| --- | --- | --- |
+| Claude, xhigh-capable | `output_config.effort` | `low`–`max`, including `xhigh` |
+| Claude, others | `output_config.effort` | `low`–`max`, no `xhigh` |
+| GPT 5.6 | `reasoning.effort` | `low`–`max`, including `xhigh` |
+
+Sending `reasoning.effort` to Claude, or `output_config.effort` to GPT, fails with
+`property '<key>' is not defined in the schema`. `getEffortSchemaPath` in
+`src/plugin/effort.ts` picks the right one per model, and the same
+`buildEffortRequestFields` builds both the wire body and the request log so they
+cannot describe different things.
+
+GPT 5.6 also does not use Claude's `<thinking>` tag protocol: the plugin omits the
+`<thinking_mode>` system prefix and does not replay prior reasoning as `<thinking>`
+tags for those models. Its reasoning arrives natively on `reasoningContentEvent`,
+the same channel Claude uses.
 
 ### Context windows
 

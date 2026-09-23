@@ -1,15 +1,17 @@
 import { CodeWhispererStreamingClient } from '@aws/codewhisperer-streaming-client'
 import { KIRO_CONSTANTS } from '../constants.js'
+import { buildEffortRequestFields, type EffortSchemaPath } from './effort.js'
 import type { Effort, KiroAuthDetails } from './types'
 
 /**
- * Cache key includes effort to ensure separate clients for different effort levels,
- * since middleware is configured at client creation time.
+ * Cache key includes effort and its schema path to ensure separate clients per
+ * configuration, since middleware is configured at client creation time.
  */
 interface ClientCacheEntry {
   client: CodeWhispererStreamingClient
   token: string
   effort?: Effort
+  effortSchemaPath?: EffortSchemaPath
 }
 
 const clientCache = new Map<string, ClientCacheEntry>()
@@ -18,12 +20,23 @@ const KIRO_CLI_MAX_ATTEMPTS = 3
 export function createSdkClient(
   auth: KiroAuthDetails,
   region: string,
-  effort?: Effort
+  effort?: Effort,
+  effortSchemaPath?: EffortSchemaPath
 ): CodeWhispererStreamingClient {
-  const cacheKey = `${region}:${auth.email || 'default'}:${effort || 'none'}`
+  // Default to Claude's key so existing callers that pass only an effort keep
+  // their current behavior.
+  const schemaPath: EffortSchemaPath | undefined = effort
+    ? (effortSchemaPath ?? 'output_config')
+    : undefined
+  const cacheKey = `${region}:${auth.email || 'default'}:${effort || 'none'}:${schemaPath || 'none'}`
   const cached = clientCache.get(cacheKey)
 
-  if (cached && cached.token === auth.access && cached.effort === effort) {
+  if (
+    cached &&
+    cached.token === auth.access &&
+    cached.effort === effort &&
+    cached.effortSchemaPath === schemaPath
+  ) {
     return cached.client
   }
 
@@ -46,8 +59,9 @@ export function createSdkClient(
     { step: 'build', name: 'addKiroHeaders' }
   )
 
-  // Inject additionalModelRequestFields for effort-based thinking control
-  if (effort) {
+  // Inject additionalModelRequestFields for effort-based reasoning control, using
+  // whichever schema key the target model accepts.
+  if (effort && schemaPath) {
     client.middlewareStack.add(
       (next: any) => async (args: any) => {
         // The SDK serializes input to args.input, we need to modify the body
@@ -55,14 +69,13 @@ export function createSdkClient(
         if (args.request?.body) {
           try {
             const body = JSON.parse(args.request.body)
-            body.additionalModelRequestFields = {
-              output_config: {
-                effort
-              }
-            }
+            body.additionalModelRequestFields = buildEffortRequestFields(effort, schemaPath)
             args.request.body = JSON.stringify(body)
-          } catch {
-            // If body parsing fails, continue without modification
+          } catch (error) {
+            // Swallowing this would silently drop the effort setting and leave the
+            // caller believing it applied, so surface it instead.
+            const detail = error instanceof Error ? error.message : String(error)
+            throw new Error(`Failed to inject Kiro effort configuration: ${detail}`)
           }
         }
         return next(args)
@@ -71,7 +84,7 @@ export function createSdkClient(
     )
   }
 
-  clientCache.set(cacheKey, { client, token, effort })
+  clientCache.set(cacheKey, { client, token, effort, effortSchemaPath: schemaPath })
   return client
 }
 

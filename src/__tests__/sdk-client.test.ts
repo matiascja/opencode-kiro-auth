@@ -114,4 +114,71 @@ describe('SDK client', () => {
 
     clearSdkClientCache()
   })
+
+  // Kiro validates the key per model and rejects the wrong one, so the two schema
+  // paths must stay mutually exclusive on the wire.
+  test('routes GPT effort through reasoning instead of output_config', async () => {
+    clearSdkClientCache()
+
+    const client = createSdkClient(auth(), 'us-east-1', 'high', 'reasoning')
+    const { body, request } = await captureRequest(client)
+
+    expect(body.additionalModelRequestFields.reasoning.effort).toBe('high')
+    expect(body.additionalModelRequestFields.output_config).toBeUndefined()
+    expect(Number(request.headers['content-length'])).toBe(Buffer.byteLength(request.bodyText))
+
+    clearSdkClientCache()
+  })
+
+  test('defaults to output_config when no schema path is given', async () => {
+    clearSdkClientCache()
+
+    const client = createSdkClient(auth(), 'us-east-1', 'high')
+    const { body } = await captureRequest(client)
+
+    expect(body.additionalModelRequestFields.output_config.effort).toBe('high')
+    expect(body.additionalModelRequestFields.reasoning).toBeUndefined()
+
+    clearSdkClientCache()
+  })
+
+  test('does not reuse a cached client across schema paths', () => {
+    clearSdkClientCache()
+
+    const outputConfig = createSdkClient(auth(), 'us-east-1', 'high', 'output_config')
+    const reasoning = createSdkClient(auth(), 'us-east-1', 'high', 'reasoning')
+
+    expect(reasoning).not.toBe(outputConfig)
+
+    clearSdkClientCache()
+  })
+
+  // Silently swallowing this would drop the effort setting while the caller believes
+  // it applied.
+  test('surfaces a failure to inject the effort configuration', async () => {
+    clearSdkClientCache()
+
+    const client = createSdkClient(auth(), 'us-east-1', 'high', 'reasoning')
+    client.middlewareStack.addRelativeTo(
+      (next: any) => async (args: any) => {
+        args.request.body = '{invalid-json'
+        return next(args)
+      },
+      { relation: 'before', toMiddleware: 'addEffortConfig', name: 'corruptBody' }
+    )
+
+    const command = new GenerateAssistantResponseCommand({
+      conversationState: {
+        chatTriggerType: 'MANUAL',
+        conversationId: 'test-conversation',
+        currentMessage: {
+          userInputMessage: { content: 'hello', modelId: 'gpt-5.6-sol', origin: 'AI_EDITOR' }
+        }
+      }
+    })
+
+    await expect(client.send(command)).rejects.toThrow('Failed to inject Kiro effort configuration')
+
+    clearSdkClientCache()
+  })
 })

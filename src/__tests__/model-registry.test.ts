@@ -7,12 +7,22 @@ import { getContextWindowSize, resolveKiroModel } from '../plugin/models.js'
 
 const registry = buildModelRegistry() as Record<string, any>
 
-const thinkingIDs = Object.keys(registry).filter((id) => id.endsWith('-thinking'))
+// Reasoning capability is no longer inferable from the model ID: Claude exposes it
+// on a `-thinking` companion, GPT-5.6 on the base model itself. Select on the flag.
+const reasoningIDs = Object.entries(registry)
+  .filter(([, model]) => model.reasoning === true)
+  .map(([id]) => id)
+
+const companionIDs = Object.keys(registry).filter((id) => id.endsWith('-thinking'))
+
+const GPT_IDS = ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna']
+
 const XHIGH_MODELS = [
   'claude-opus-4-7-thinking',
   'claude-opus-4-8-thinking',
   'claude-opus-5-thinking',
-  'claude-sonnet-5-thinking'
+  'claude-sonnet-5-thinking',
+  ...GPT_IDS
 ]
 
 describe('model registry', () => {
@@ -23,7 +33,7 @@ describe('model registry', () => {
   })
 
   test('advertises a thinking companion for each effort-capable Claude model', () => {
-    expect(thinkingIDs.sort()).toEqual(
+    expect(companionIDs.sort()).toEqual(
       [
         'claude-opus-4-5-thinking',
         'claude-opus-4-6-thinking',
@@ -37,16 +47,39 @@ describe('model registry', () => {
     )
   })
 
-  test('advertises GPT 5.6 tiers without Claude thinking variants', () => {
-    // Kiro moved the GPT-5.6 family to a 1M window on 2026-09-14 and split billing
-    // into a short/long tier, which the rate label carries.
-    expect(registry['gpt-5.6-sol']).toMatchObject({
-      name: 'GPT 5.6 Sol (4.4x/8.8x)',
-      limit: { context: 1000000, output: 64000 }
+  describe('GPT 5.6 tiers', () => {
+    // GPT-5.6 reasoning is intrinsic and controlled through reasoning.effort, so the
+    // base model is the reasoning model. A `-thinking` companion would be a second
+    // entry for the same thing.
+    test('carry reasoning on the base model, with no companion', () => {
+      for (const id of GPT_IDS) {
+        expect(registry[id].reasoning).toBe(true)
+        expect(registry[id].interleaved).toEqual({ field: 'reasoning_content' })
+        expect(registry[`${id}-thinking`]).toBeUndefined()
+      }
     })
-    expect(registry['gpt-5.6-terra']).toBeDefined()
-    expect(registry['gpt-5.6-luna']).toBeDefined()
-    expect(registry['gpt-5.6-sol-thinking']).toBeUndefined()
+
+    test('keep the 1M window and two-tier rate label', () => {
+      // Kiro moved the family to 1M on 2026-09-14 and split billing short/long.
+      expect(registry['gpt-5.6-sol']).toMatchObject({
+        name: 'GPT 5.6 Sol (4.4x/8.8x)',
+        limit: { context: 1000000, output: 64000 }
+      })
+    })
+
+    test('offer the full effort ladder', () => {
+      // The live API reports their enum as none/low/medium/high/xhigh/max, so every
+      // shared level is reachable.
+      for (const id of GPT_IDS) {
+        expect(Object.keys(registry[id].variants)).toEqual([
+          'low',
+          'medium',
+          'high',
+          'xhigh',
+          'max'
+        ])
+      }
+    })
   })
 
   // The advertised limit drives OpenCode's context bar and auto-compaction, while
@@ -59,7 +92,7 @@ describe('model registry', () => {
   })
 
   test('thinking companions inherit their base model limit', () => {
-    for (const id of thinkingIDs) {
+    for (const id of companionIDs) {
       const base = id.replace(/-thinking$/, '')
       expect(registry[id].limit).toEqual(registry[base].limit)
     }
@@ -69,32 +102,39 @@ describe('model registry', () => {
     // Both are required: `reasoning` declares the capability, `interleaved.field`
     // tells OpenCode reasoning arrives as `reasoning_content` deltas. Missing
     // either one means reasoning chunks are silently dropped.
-    test('every thinking model declares reasoning and the reasoning_content field', () => {
-      for (const id of thinkingIDs) {
+    test('every reasoning model declares reasoning and the reasoning_content field', () => {
+      expect(reasoningIDs.length).toBeGreaterThan(0)
+      for (const id of reasoningIDs) {
         expect(registry[id].reasoning).toBe(true)
         expect(registry[id].interleaved).toEqual({ field: 'reasoning_content' })
       }
     })
 
-    test('non-thinking models declare neither', () => {
+    test('models without reasoning declare neither flag nor variants', () => {
       for (const [id, model] of Object.entries(registry)) {
-        if (id.endsWith('-thinking')) continue
+        if (reasoningIDs.includes(id)) continue
         expect(model.reasoning).toBeUndefined()
         expect(model.interleaved).toBeUndefined()
+        expect(model.variants).toBeUndefined()
       }
+    })
+
+    test('Claude base models stay non-reasoning so thinking remains opt-in', () => {
+      expect(registry['claude-opus-5'].reasoning).toBeUndefined()
+      expect(registry['claude-sonnet-4-6'].reasoning).toBeUndefined()
     })
   })
 
-  describe('thinking variants', () => {
+  describe('reasoning variants', () => {
     test('offers xhigh only on models Kiro documents as xhigh-capable', () => {
-      for (const id of thinkingIDs) {
+      for (const id of reasoningIDs) {
         const hasXHigh = Object.keys(registry[id].variants).includes('xhigh')
         expect(hasXHigh).toBe(XHIGH_MODELS.includes(id))
       }
     })
 
     test('variant budgets map back to the effort level they are named for', () => {
-      for (const id of thinkingIDs) {
+      for (const id of reasoningIDs) {
         const kiroModel = resolveKiroModel(id)
         for (const [name, variant] of Object.entries<any>(registry[id].variants)) {
           const level = name as Effort
@@ -106,7 +146,7 @@ describe('model registry', () => {
     })
 
     test('variants are ordered low to max', () => {
-      for (const id of thinkingIDs) {
+      for (const id of reasoningIDs) {
         const budgets = Object.values<any>(registry[id].variants).map(
           (v) => v.thinkingConfig.thinkingBudget
         )

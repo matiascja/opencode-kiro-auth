@@ -17,7 +17,7 @@ import {
   createToolNameRegistry,
   deduplicateToolResults
 } from '../infrastructure/transformers/tool-transformer.js'
-import { getEffectiveEffort } from './effort.js'
+import { getEffectiveEffort, getEffortSchemaPath, usesReasoningEffortSchema } from './effort.js'
 import {
   convertImagesToKiroFormat,
   extractAllImages,
@@ -65,6 +65,10 @@ function buildCodeWhispererRequest(
   const convId = crypto.randomUUID()
   if (!messages || messages.length === 0) throw new Error('No messages')
   const resolved = resolveKiroModel(model)
+  // Claude takes thinking through a `<thinking_mode>` system prefix and replayed
+  // `<thinking>` tags in history. GPT-5.6 takes it through `reasoning.effort` and
+  // never emits those tags, so feeding them in would just be literal noise.
+  const usesClaudeThinkingTags = !usesReasoningEffortSchema(resolved)
   const systemMsgs = messages.filter((m: any) => m.role === 'system')
   const otherMsgs = messages.filter((m: any) => m.role !== 'system')
   let sys = system || ''
@@ -72,7 +76,7 @@ function buildCodeWhispererRequest(
     const extractedSystem = systemMsgs.map((m: any) => getContentText(m)).join('\n\n')
     sys = sys ? `${sys}\n\n${extractedSystem}` : extractedSystem
   }
-  if (think) {
+  if (think && usesClaudeThinkingTags) {
     const pfx = `<thinking_mode>enabled</thinking_mode><max_thinking_length>${budget}</max_thinking_length>`
     sys = sys.includes('<thinking_mode>') ? sys : sys ? `${pfx}\n${sys}` : pfx
   }
@@ -82,7 +86,7 @@ function buildCodeWhispererRequest(
   const normalizedTools = Array.isArray(tools) ? tools : []
   const toolNameRegistry = createToolNameRegistry(normalizedTools)
   const cwTools = convertToolsToCodeWhisperer(normalizedTools, toolNameRegistry)
-  let history = buildHistory(msgs, resolved)
+  let history = buildHistory(msgs, resolved, usesClaudeThinkingTags)
 
   const curMsg = msgs[msgs.length - 1]
   if (!curMsg) throw new Error('Empty')
@@ -121,7 +125,7 @@ function buildCodeWhispererRequest(
     if (Array.isArray(curMsg.content)) {
       for (const p of curMsg.content) {
         if (p.type === 'text') arm.content += p.text || ''
-        else if (p.type === 'thinking') th += p.thinking || p.text || ''
+        else if (p.type === 'thinking' && usesClaudeThinkingTags) th += p.thinking || p.text || ''
         else if (p.type === 'tool_use') {
           if (!arm.toolUses) arm.toolUses = []
           arm.toolUses.push({ input: p.input, name: p.name, toolUseId: p.id })
@@ -380,6 +384,9 @@ export function transformToSdkRequest(
     conversationId: convId,
     region: extractRegionFromArn(auth.profileArn) ?? auth.region,
     toolNameMap,
-    effort
+    effort,
+    // Which additionalModelRequestFields key this model accepts. Kiro rejects the
+    // wrong one, so it travels with the request instead of being assumed.
+    effortSchemaPath: effort ? getEffortSchemaPath(resolved) : undefined
   }
 }

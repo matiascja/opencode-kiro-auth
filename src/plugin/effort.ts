@@ -23,6 +23,30 @@ export const THINKING_BUDGETS: Readonly<Record<Effort, number>> = {
 }
 
 /**
+ * Which `additionalModelRequestFields` key carries the effort value.
+ *
+ * Kiro validates this per model and rejects the wrong one outright. Verified
+ * against the live API:
+ *
+ *   claude-opus-5 + { output_config: { effort } }  -> accepted
+ *   claude-opus-5 + { reasoning:     { effort } }  -> ValidationException
+ *   gpt-5.6-sol   + { reasoning:     { effort } }  -> accepted
+ *   gpt-5.6-sol   + { output_config: { effort } }  -> ValidationException
+ *
+ * ("property '<key>' is not defined in the schema")
+ */
+export type EffortSchemaPath = 'output_config' | 'reasoning'
+
+/**
+ * Kiro's GPT-5.6 tiers, which take effort through `reasoning.effort`.
+ *
+ * The API reports their enum as ["none", "low", "medium", "high", "xhigh", "max"]
+ * — the Claude enum plus `none`. All five shared levels were accepted on
+ * gpt-5.6-sol, so these models are treated as fully effort-capable.
+ */
+const GPT_REASONING_MODELS = new Set(['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'])
+
+/**
  * Models that support the 5-value effort enum (including xhigh).
  * Per Kiro's effort docs, this is opus-4.7/4.8/5 and sonnet-5.
  */
@@ -31,7 +55,8 @@ const XHIGH_CAPABLE_MODELS = new Set([
   'claude-opus-4.8',
   'claude-opus-5',
   'claude-sonnet-5',
-  'claude-sonnet-5-1m'
+  'claude-sonnet-5-1m',
+  ...GPT_REASONING_MODELS
 ])
 
 /**
@@ -61,6 +86,58 @@ export function supportsEffort(kiroModel: string): boolean {
  */
 export function supportsXHighEffort(kiroModel: string): boolean {
   return XHIGH_CAPABLE_MODELS.has(kiroModel)
+}
+
+/**
+ * Whether a model takes effort through `reasoning.effort` rather than
+ * `output_config.effort`. Also means it does NOT use Claude's `<thinking>` tag
+ * protocol, so those tags must be kept out of its prompt and history.
+ */
+export function usesReasoningEffortSchema(kiroModel: string): boolean {
+  return GPT_REASONING_MODELS.has(kiroModel)
+}
+
+/**
+ * The `additionalModelRequestFields` key this model accepts, or undefined when it
+ * takes no effort at all.
+ */
+export function getEffortSchemaPath(kiroModel: string): EffortSchemaPath | undefined {
+  if (!supportsEffort(kiroModel)) {
+    return undefined
+  }
+
+  return usesReasoningEffortSchema(kiroModel) ? 'reasoning' : 'output_config'
+}
+
+/**
+ * Build the `additionalModelRequestFields` payload for an effort level.
+ *
+ * Single place that shapes this object, so the wire body and the request log
+ * cannot describe different things.
+ */
+export function buildEffortRequestFields(
+  effort: Effort,
+  schemaPath: EffortSchemaPath
+): Record<string, { effort: Effort }> {
+  return schemaPath === 'reasoning' ? { reasoning: { effort } } : { output_config: { effort } }
+}
+
+/**
+ * Effort levels this model actually advertises, lowest to highest.
+ *
+ * Used to build the variants offered to OpenCode, so a level that would be
+ * clamped or rejected is never presented as a choice.
+ */
+export function getSupportedEffortLevels(kiroModel: string): readonly Effort[] {
+  if (!supportsEffort(kiroModel)) {
+    return []
+  }
+
+  if (!supportsXHighEffort(kiroModel)) {
+    return EFFORT_LEVELS.filter((level) => level !== 'xhigh')
+  }
+
+  return EFFORT_LEVELS
 }
 
 /**

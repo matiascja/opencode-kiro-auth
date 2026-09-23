@@ -1,4 +1,4 @@
-import { EFFORT_LEVELS, supportsEffort, supportsXHighEffort, THINKING_BUDGETS } from './effort.js'
+import { getSupportedEffortLevels, supportsEffort, THINKING_BUDGETS } from './effort.js'
 import { getAdvertisedContextLimit } from './model-context.js'
 import { resolveKiroModel } from './models.js'
 
@@ -18,11 +18,17 @@ interface ModelSpec {
   rate: string
   modalities: Modalities
   /**
-   * Emit a companion `-thinking` entry. Only set for Claude models that accept
-   * `output_config.effort`; the effort ladder is derived from the model's own
-   * capabilities in effort.ts.
+   * How this model exposes reasoning, if at all.
+   *
+   * - `companion`: emit a separate `-thinking` entry, leaving the base model
+   *   non-reasoning. Claude's shape, since its reasoning is opt-in per request.
+   * - `native`: mark the base model itself as reasoning-capable. GPT-5.6's shape,
+   *   since reasoning is intrinsic and cannot be turned off, only dialled down.
+   *
+   * Either way the effort ladder comes from the model's own capabilities in
+   * effort.ts, never from this field.
    */
-  thinking?: boolean
+  effort?: 'companion' | 'native'
 }
 
 /**
@@ -44,19 +50,19 @@ const MODEL_SPECS: Record<string, ModelSpec> = {
     name: 'Claude Sonnet 4.5',
     rate: '1.3x',
     modalities: MULTIMODAL,
-    thinking: true
+    effort: 'companion'
   },
   'claude-sonnet-4-6': {
     name: 'Claude Sonnet 4.6',
     rate: '1.3x',
     modalities: MULTIMODAL,
-    thinking: true
+    effort: 'companion'
   },
   'claude-sonnet-5': {
     name: 'Claude Sonnet 5',
     rate: '1.3x',
     modalities: MULTIMODAL,
-    thinking: true
+    effort: 'companion'
   },
 
   // Claude Haiku
@@ -71,31 +77,31 @@ const MODEL_SPECS: Record<string, ModelSpec> = {
     name: 'Claude Opus 4.5',
     rate: '2.2x',
     modalities: MULTIMODAL,
-    thinking: true
+    effort: 'companion'
   },
   'claude-opus-4-6': {
     name: 'Claude Opus 4.6',
     rate: '2.2x',
     modalities: MULTIMODAL,
-    thinking: true
+    effort: 'companion'
   },
   'claude-opus-4-7': {
     name: 'Claude Opus 4.7',
     rate: '2.2x',
     modalities: MULTIMODAL,
-    thinking: true
+    effort: 'companion'
   },
   'claude-opus-4-8': {
     name: 'Claude Opus 4.8',
     rate: '2.2x',
     modalities: MULTIMODAL,
-    thinking: true
+    effort: 'companion'
   },
   'claude-opus-5': {
     name: 'Claude Opus 5',
     rate: '2.2x',
     modalities: MULTIMODAL,
-    thinking: true
+    effort: 'companion'
   },
 
   // OpenAI GPT 5.6 (via Kiro, no configurable effort).
@@ -106,17 +112,20 @@ const MODEL_SPECS: Record<string, ModelSpec> = {
   'gpt-5.6-sol': {
     name: 'GPT 5.6 Sol',
     rate: '4.4x/8.8x',
-    modalities: TEXT_ONLY
+    modalities: TEXT_ONLY,
+    effort: 'native'
   },
   'gpt-5.6-terra': {
     name: 'GPT 5.6 Terra',
     rate: '2.2x/4.4x',
-    modalities: TEXT_ONLY
+    modalities: TEXT_ONLY,
+    effort: 'native'
   },
   'gpt-5.6-luna': {
     name: 'GPT 5.6 Luna',
     rate: '1.1x/2.2x',
-    modalities: TEXT_ONLY
+    modalities: TEXT_ONLY,
+    effort: 'native'
   },
 
   // Open weight models
@@ -144,16 +153,16 @@ const MODEL_SPECS: Record<string, ModelSpec> = {
 }
 
 /**
- * Build the thinking variants a model supports.
+ * Build the reasoning variants a model supports.
  *
- * Levels come from the model's own effort capabilities, so xhigh only appears on
- * models that accept it and the budgets stay in step with budgetToEffort.
+ * Levels come from the model's own effort capabilities, so a level that would be
+ * clamped or rejected is never offered, and the budgets stay in step with
+ * budgetToEffort.
  */
 function buildVariants(kiroModel: string): Record<string, unknown> {
   const variants: Record<string, unknown> = {}
 
-  for (const level of EFFORT_LEVELS) {
-    if (level === 'xhigh' && !supportsXHighEffort(kiroModel)) continue
+  for (const level of getSupportedEffortLevels(kiroModel)) {
     variants[level] = { thinkingConfig: { thinkingBudget: THINKING_BUDGETS[level] } }
   }
 
@@ -163,11 +172,14 @@ function buildVariants(kiroModel: string): Record<string, unknown> {
 /**
  * Model registry advertised to OpenCode.
  *
- * `-thinking` entries carry `reasoning` and `interleaved`. Both are required:
+ * Reasoning entries carry `reasoning` and `interleaved`. Both are required:
  * `reasoning` declares the capability, and `interleaved.field` tells OpenCode
  * that reasoning arrives in the non-standard `reasoning_content` delta this
  * plugin emits (see streaming/openai-converter.ts). Without them OpenCode
  * silently drops every reasoning chunk and no thinking block is rendered.
+ *
+ * Two shapes, per `ModelSpec.effort`: Claude gets a separate `-thinking`
+ * companion, GPT-5.6 carries reasoning on the base model itself.
  */
 export function buildModelRegistry(): Record<string, unknown> {
   const models: Record<string, unknown> = {}
@@ -181,26 +193,35 @@ export function buildModelRegistry(): Record<string, unknown> {
       throw new Error(`Missing context limit for advertised model: ${modelID}`)
     }
 
-    models[modelID] = {
+    const base = {
       name: `${spec.name} (${spec.rate})`,
       limit,
       modalities: spec.modalities
     }
 
-    if (!spec.thinking) continue
+    models[modelID] = base
+    if (!spec.effort) continue
 
     // Effort capability is keyed on the resolved Kiro model ID, not the
     // OpenCode-facing one (e.g. claude-opus-5 vs claude-opus-4-6).
     const kiroModel = resolveKiroModel(modelID)
     if (!supportsEffort(kiroModel)) continue
 
-    models[`${modelID}-thinking`] = {
-      name: `${spec.name} Thinking (${spec.rate})`,
-      limit,
-      modalities: spec.modalities,
+    const reasoning = {
       reasoning: true,
       interleaved: { field: 'reasoning_content' },
       variants: buildVariants(kiroModel)
+    }
+
+    if (spec.effort === 'native') {
+      models[modelID] = { ...base, ...reasoning }
+      continue
+    }
+
+    models[`${modelID}-thinking`] = {
+      ...base,
+      name: `${spec.name} Thinking (${spec.rate})`,
+      ...reasoning
     }
   }
 

@@ -1,10 +1,14 @@
 import { describe, expect, test } from 'bun:test'
 import {
   budgetToEffort,
+  buildEffortRequestFields,
   getEffectiveEffort,
+  getEffortSchemaPath,
+  getSupportedEffortLevels,
   resolveEffort,
   supportsEffort,
-  supportsXHighEffort
+  supportsXHighEffort,
+  usesReasoningEffortSchema
 } from '../plugin/effort.js'
 
 describe('effort module', () => {
@@ -27,18 +31,83 @@ describe('effort module', () => {
   })
 
   describe('supportsXHighEffort', () => {
-    test('returns true for opus 4.7/4.8/5 and sonnet 5', () => {
+    test('returns true for opus 4.7/4.8/5, sonnet 5 and the GPT tiers', () => {
       expect(supportsXHighEffort('claude-opus-4.8')).toBe(true)
       expect(supportsXHighEffort('claude-opus-4.7')).toBe(true)
       expect(supportsXHighEffort('claude-opus-5')).toBe(true)
       expect(supportsXHighEffort('claude-sonnet-5')).toBe(true)
       expect(supportsXHighEffort('claude-sonnet-5-1m')).toBe(true)
+      expect(supportsXHighEffort('gpt-5.6-sol')).toBe(true)
     })
 
     test('returns false for other models', () => {
       expect(supportsXHighEffort('claude-opus-4.6')).toBe(false)
       expect(supportsXHighEffort('claude-sonnet-4.6')).toBe(false)
       expect(supportsXHighEffort('claude-opus-4.5')).toBe(false)
+    })
+  })
+
+  // Kiro validates the additionalModelRequestFields key per model and rejects the
+  // wrong one. Verified live: claude-opus-5 accepts only output_config, gpt-5.6-sol
+  // accepts only reasoning.
+  describe('effort schema path', () => {
+    test('routes GPT through reasoning and Claude through output_config', () => {
+      expect(getEffortSchemaPath('gpt-5.6-sol')).toBe('reasoning')
+      expect(getEffortSchemaPath('gpt-5.6-terra')).toBe('reasoning')
+      expect(getEffortSchemaPath('gpt-5.6-luna')).toBe('reasoning')
+      expect(getEffortSchemaPath('claude-opus-5')).toBe('output_config')
+      expect(getEffortSchemaPath('claude-sonnet-4.6')).toBe('output_config')
+    })
+
+    test('returns undefined for models that take no effort', () => {
+      expect(getEffortSchemaPath('claude-haiku-4.5')).toBeUndefined()
+      expect(getEffortSchemaPath('glm-5')).toBeUndefined()
+    })
+
+    test('builds the matching request fields', () => {
+      expect(buildEffortRequestFields('high', 'reasoning')).toEqual({
+        reasoning: { effort: 'high' }
+      })
+      expect(buildEffortRequestFields('xhigh', 'output_config')).toEqual({
+        output_config: { effort: 'xhigh' }
+      })
+    })
+
+    test('flags which models use the reasoning schema', () => {
+      expect(usesReasoningEffortSchema('gpt-5.6-sol')).toBe(true)
+      expect(usesReasoningEffortSchema('claude-opus-5')).toBe(false)
+    })
+  })
+
+  describe('getSupportedEffortLevels', () => {
+    test('offers the full ladder to xhigh-capable models', () => {
+      expect(getSupportedEffortLevels('claude-opus-5')).toEqual([
+        'low',
+        'medium',
+        'high',
+        'xhigh',
+        'max'
+      ])
+      expect(getSupportedEffortLevels('gpt-5.6-sol')).toEqual([
+        'low',
+        'medium',
+        'high',
+        'xhigh',
+        'max'
+      ])
+    })
+
+    test('drops xhigh for models that would clamp it', () => {
+      expect(getSupportedEffortLevels('claude-sonnet-4.6')).toEqual([
+        'low',
+        'medium',
+        'high',
+        'max'
+      ])
+    })
+
+    test('returns nothing for models without effort', () => {
+      expect(getSupportedEffortLevels('claude-haiku-4.5')).toEqual([])
     })
   })
 
