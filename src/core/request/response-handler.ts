@@ -140,6 +140,10 @@ export class ResponseHandler {
     const toolCallOrder: string[] = []
     let inputTokens = 0
     let outputTokens = 0
+    // Prompt-cache usage from MetadataEvent.tokenUsage; previously dropped, which
+    // left callers unable to see whether the backend served from cache.
+    let cacheReadInputTokens = 0
+    let cacheWriteInputTokens = 0
 
     const eventStream = sdkResponse.generateAssistantResponseResponse
     if (eventStream) {
@@ -171,6 +175,8 @@ export class ResponseHandler {
         if (event.metadataEvent?.tokenUsage) {
           inputTokens = event.metadataEvent.tokenUsage.inputTokens || 0
           outputTokens = event.metadataEvent.tokenUsage.outputTokens || 0
+          cacheReadInputTokens = event.metadataEvent.tokenUsage.cacheReadInputTokens || 0
+          cacheWriteInputTokens = event.metadataEvent.tokenUsage.cacheWriteInputTokens || 0
         }
       }
     }
@@ -197,7 +203,9 @@ export class ResponseHandler {
       usage: {
         prompt_tokens: inputTokens,
         completion_tokens: outputTokens,
-        total_tokens: inputTokens + outputTokens
+        total_tokens: inputTokens + outputTokens,
+        cache_creation_input_tokens: cacheWriteInputTokens,
+        cache_read_input_tokens: cacheReadInputTokens
       }
     }
 

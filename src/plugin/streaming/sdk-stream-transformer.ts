@@ -43,6 +43,12 @@ export async function* transformSdkStream(
   let outputTokens = 0
   let inputTokens = 0
   let contextUsagePercentage: number | null = null
+  // Prompt-cache usage as reported by the backend. The CodeWhisperer SDK carries
+  // these on MetadataEvent.tokenUsage (TokenUsage.cacheReadInputTokens /
+  // cacheWriteInputTokens); they used to be emitted as hardcoded zeros, which
+  // made it impossible to tell whether the backend hit its cache.
+  let cacheReadInputTokens = 0
+  let cacheWriteInputTokens = 0
   const toolCallFragments = new Map<string, PendingToolCall>()
   const toolCallOrder: string[] = []
 
@@ -184,6 +190,11 @@ export async function* transformSdkStream(
         if (event.metadataEvent.contextUsagePercentage) {
           contextUsagePercentage = event.metadataEvent.contextUsagePercentage
         }
+        const tokenUsage = event.metadataEvent.tokenUsage
+        if (tokenUsage) {
+          cacheReadInputTokens = tokenUsage.cacheReadInputTokens ?? 0
+          cacheWriteInputTokens = tokenUsage.cacheWriteInputTokens ?? 0
+        }
       } else if ((event as any).contextUsageEvent) {
         const cue = (event as any).contextUsageEvent
         if (cue.contextUsagePercentage) {
@@ -312,8 +323,8 @@ export async function* transformSdkStream(
           usage: {
             input_tokens: inputTokens,
             output_tokens: outputTokens,
-            cache_creation_input_tokens: 0,
-            cache_read_input_tokens: 0
+            cache_creation_input_tokens: cacheWriteInputTokens,
+            cache_read_input_tokens: cacheReadInputTokens
           }
         },
         conversationId,

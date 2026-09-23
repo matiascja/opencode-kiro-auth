@@ -313,6 +313,10 @@ export async function* transformKiroStream(
           usage: {
             input_tokens: inputTokens,
             output_tokens: outputTokens,
+            // Deliberately zero: this is the raw HTTP event-stream path, whose wire
+            // format only carries contextUsagePercentage and never per-request token
+            // usage, so there are no cache figures to report here. The SDK path
+            // (sdk-stream-transformer.ts) reads them from MetadataEvent.tokenUsage.
             cache_creation_input_tokens: 0,
             cache_read_input_tokens: 0
           }
