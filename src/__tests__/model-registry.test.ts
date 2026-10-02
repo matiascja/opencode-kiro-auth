@@ -21,7 +21,9 @@ const XHIGH_MODELS = [
   'claude-opus-4-7-thinking',
   'claude-opus-4-8-thinking',
   'claude-opus-5-thinking',
+  'claude-opus-5-5-thinking',
   'claude-sonnet-5-thinking',
+  'claude-sonnet-5-5-thinking',
   ...GPT_IDS
 ]
 
@@ -40,9 +42,11 @@ describe('model registry', () => {
         'claude-opus-4-7-thinking',
         'claude-opus-4-8-thinking',
         'claude-opus-5-thinking',
+        'claude-opus-5-5-thinking',
         'claude-sonnet-4-5-thinking',
         'claude-sonnet-4-6-thinking',
-        'claude-sonnet-5-thinking'
+        'claude-sonnet-5-thinking',
+        'claude-sonnet-5-5-thinking'
       ].sort()
     )
   })

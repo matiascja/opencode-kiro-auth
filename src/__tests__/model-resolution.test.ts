@@ -33,6 +33,15 @@ describe('resolveKiroModel', () => {
     expect(resolveKiroModel('claude-sonnet-5-1m-thinking')).toBe('claude-sonnet-5-1m')
   })
 
+  // Kiro spells these with a dot; the OpenCode-facing slug uses a dash, so the
+  // mapping is what keeps `-5-5` from being read as a `-1m`-style suffix.
+  test('resolves the 5.5 slugs to their dotted Kiro IDs', () => {
+    expect(resolveKiroModel('claude-opus-5-5')).toBe('claude-opus-5.5')
+    expect(resolveKiroModel('claude-opus-5-5-thinking')).toBe('claude-opus-5.5')
+    expect(resolveKiroModel('claude-sonnet-5-5')).toBe('claude-sonnet-5.5')
+    expect(resolveKiroModel('claude-sonnet-5-5-thinking')).toBe('claude-sonnet-5.5')
+  })
+
   test('rejects removed qwen3-coder-480b slug', () => {
     expect(() => resolveKiroModel('qwen3-coder-480b')).toThrow(
       'Unsupported model: qwen3-coder-480b'

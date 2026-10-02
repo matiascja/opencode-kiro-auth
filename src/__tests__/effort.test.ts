@@ -31,12 +31,16 @@ describe('effort module', () => {
   })
 
   describe('supportsXHighEffort', () => {
-    test('returns true for opus 4.7/4.8/5, sonnet 5 and the GPT tiers', () => {
+    test('returns true for opus 4.7+, sonnet 5+, the 5.5 pair and the GPT tiers', () => {
       expect(supportsXHighEffort('claude-opus-4.8')).toBe(true)
       expect(supportsXHighEffort('claude-opus-4.7')).toBe(true)
       expect(supportsXHighEffort('claude-opus-5')).toBe(true)
+      // Confirmed live: the 5.5 pair reports the same enum as Opus 5,
+      // ["low","medium","high","xhigh","max"].
+      expect(supportsXHighEffort('claude-opus-5.5')).toBe(true)
       expect(supportsXHighEffort('claude-sonnet-5')).toBe(true)
       expect(supportsXHighEffort('claude-sonnet-5-1m')).toBe(true)
+      expect(supportsXHighEffort('claude-sonnet-5.5')).toBe(true)
       expect(supportsXHighEffort('gpt-5.6-sol')).toBe(true)
     })
 
@@ -57,6 +61,10 @@ describe('effort module', () => {
       expect(getEffortSchemaPath('gpt-5.6-luna')).toBe('reasoning')
       expect(getEffortSchemaPath('claude-opus-5')).toBe('output_config')
       expect(getEffortSchemaPath('claude-sonnet-4.6')).toBe('output_config')
+      // The 5.5 pair follows Claude's contract, verified live: reasoning.effort is
+      // rejected with "property 'reasoning' is not defined in the schema".
+      expect(getEffortSchemaPath('claude-opus-5.5')).toBe('output_config')
+      expect(getEffortSchemaPath('claude-sonnet-5.5')).toBe('output_config')
     })
 
     test('returns undefined for models that take no effort', () => {

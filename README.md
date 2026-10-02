@@ -110,11 +110,15 @@ up the new `dist/`.
 
 Default models exposed by the plugin (all reachable as `kiro-auth/<id>`):
 
-- Claude Sonnet 4, 4.5, 4.6, and 5.
+- Claude Sonnet 4, 4.5, 4.6, 5, and 5.5.
 - Claude Haiku 4.5.
-- Claude Opus 4.5, 4.6, 4.7, 4.8, and 5.
+- Claude Opus 4.5, 4.6, 4.7, 4.8, 5, and 5.5.
 - GPT 5.6 Sol, Terra, and Luna.
 - DeepSeek 3.2, GLM-5, MiniMax M2.5/M2.1, and Qwen3 Coder Next.
+
+Kiro spells the newest pair with a dot (`claude-opus-5.5`); the OpenCode-facing
+slug uses a dash, so they are `claude-opus-5-5` and `claude-sonnet-5-5`. Opus 5.5
+bills at 2.0x, slightly below Opus 5's 2.2x, with the same 1M window.
 
 Effort-capable Claude models receive a `-thinking` companion automatically. The
 GPT 5.6 tiers carry reasoning on the base model instead, since their reasoning is

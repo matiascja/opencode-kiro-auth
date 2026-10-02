@@ -64,6 +64,12 @@ const MODEL_SPECS: Record<string, ModelSpec> = {
     modalities: MULTIMODAL,
     effort: 'companion'
   },
+  'claude-sonnet-5-5': {
+    name: 'Claude Sonnet 5.5',
+    rate: '1.3x',
+    modalities: MULTIMODAL,
+    effort: 'companion'
+  },
 
   // Claude Haiku
   'claude-haiku-4-5': {
@@ -103,12 +109,22 @@ const MODEL_SPECS: Record<string, ModelSpec> = {
     modalities: MULTIMODAL,
     effort: 'companion'
   },
+  // Cheaper than Opus 5 (2.0x vs 2.2x) at the same 1M window, per Kiro's catalog.
+  'claude-opus-5-5': {
+    name: 'Claude Opus 5.5',
+    rate: '2.0x',
+    modalities: MULTIMODAL,
+    effort: 'companion'
+  },
 
   // OpenAI GPT 5.6 (via Kiro, no configurable effort).
   //
   // Kiro raised the GPT-5.6 family to a 1M context window on 2026-09-14 and moved
   // billing to two tiers: requests up to 272K bill at the short-context rate, and
   // requests above 272K bill at double. The rate label shows both, short/long.
+  //
+  // Short-tier rates come from Kiro's catalog (`kiro-cli chat --list-models`), which
+  // reports Luna at 0.6x — the launch changelog's 0.1x figure never took effect.
   'gpt-5.6-sol': {
     name: 'GPT 5.6 Sol',
     rate: '4.4x/8.8x',
@@ -123,7 +139,7 @@ const MODEL_SPECS: Record<string, ModelSpec> = {
   },
   'gpt-5.6-luna': {
     name: 'GPT 5.6 Luna',
-    rate: '1.1x/2.2x',
+    rate: '0.6x/1.2x',
     modalities: TEXT_ONLY,
     effort: 'native'
   },

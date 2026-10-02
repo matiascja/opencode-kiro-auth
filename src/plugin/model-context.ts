@@ -43,6 +43,7 @@ export const MODEL_CONTEXT_LIMITS: Record<string, ContextLimit> = {
   'claude-sonnet-4-5': CONTEXT_200K,
   'claude-sonnet-4-6': CONTEXT_1M,
   'claude-sonnet-5': CONTEXT_1M,
+  'claude-sonnet-5-5': CONTEXT_1M,
 
   // Claude Haiku
   'claude-haiku-4-5': CONTEXT_200K,
@@ -53,6 +54,7 @@ export const MODEL_CONTEXT_LIMITS: Record<string, ContextLimit> = {
   'claude-opus-4-7': CONTEXT_1M,
   'claude-opus-4-8': CONTEXT_1M,
   'claude-opus-5': CONTEXT_1M,
+  'claude-opus-5-5': CONTEXT_1M,
 
   // OpenAI GPT 5.6. Kiro raised the family from 272K to a 1M window on 2026-09-14.
   'gpt-5.6-sol': CONTEXT_1M,
