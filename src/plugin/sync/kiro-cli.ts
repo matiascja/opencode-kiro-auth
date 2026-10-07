@@ -1,11 +1,12 @@
 import Database from 'libsql'
 import { existsSync } from 'node:fs'
-import { extractRegionFromArn, normalizeRegion } from '../../constants'
 import { createDeterministicAccountId } from '../accounts'
 import * as logger from '../logger'
 import { kiroDb } from '../storage/sqlite'
 import { fetchUsageLimits } from '../usage'
 import {
+  canWriteBackToKiroCli,
+  deriveCliRegions,
   findClientCredsRecursive,
   getCliDbPath,
   makePlaceholderEmail,
@@ -27,6 +28,7 @@ export async function syncFromKiroCli() {
     cliDb.pragma('busy_timeout = 5000')
     const rows = cliDb.prepare('SELECT key, value FROM auth_kv').all() as any[]
     let activeProfileArn: string | undefined
+    let cliIdcRegion: unknown
     try {
       const stateRow = cliDb
         .prepare('SELECT value FROM state WHERE key = ?')
@@ -34,6 +36,10 @@ export async function syncFromKiroCli() {
       const parsed = safeJsonParse(stateRow?.value)
       const arn = parsed?.arn || parsed?.profileArn || parsed?.profile_arn
       if (typeof arn === 'string' && arn.trim()) activeProfileArn = arn.trim()
+      const regionRow = cliDb
+        .prepare('SELECT value FROM state WHERE key = ?')
+        .get('auth.idc.region') as any
+      cliIdcRegion = safeJsonParse(regionRow?.value) ?? regionRow?.value
     } catch {
       // Ignore state read failures; token import can proceed.
     }
@@ -54,10 +60,16 @@ export async function syncFromKiroCli() {
         const authMethod = isIdc ? 'idc' : 'desktop'
         let profileArn: string | undefined = data.profile_arn || data.profileArn
         if (!profileArn && isIdc) profileArn = activeProfileArn || readActiveProfileArnFromKiroCli()
-        // serviceRegion wins over data.region: kiro-cli stores data.region as the
-        // OIDC region (often us-east-1) regardless of where the account actually lives.
-        const serviceRegion = extractRegionFromArn(profileArn) || normalizeRegion(data.region)
-        const oidcRegion = serviceRegion
+        // kiro-cli stores data.region as the OIDC (SSO instance) region, which can
+        // differ from the profile ARN region. Keep both: ARN -> service calls,
+        // token/device-registration region -> IDC refresh endpoint.
+        const { serviceRegion, oidcRegion } = deriveCliRegions({
+          isIdc,
+          profileArn,
+          tokenRegion: data.region,
+          deviceRegRegion: deviceReg?.region,
+          cliIdcRegion
+        })
         const startUrl: string | undefined =
           typeof data.start_url === 'string'
             ? data.start_url
@@ -171,8 +183,16 @@ export async function syncFromKiroCli() {
 
         const id = createDeterministicAccountId(resolvedEmail, authMethod, clientId, profileArn)
         const existingById = all.find((a) => a.id === id)
+        // Rows written by older builds stored oidc_region = profile ARN region.
+        // Never skip the import while the stored regions are wrong, otherwise a
+        // healthy-looking row keeps refreshing against the wrong OIDC endpoint.
+        const regionMismatch =
+          !!existingById &&
+          (existingById.region !== serviceRegion ||
+            (existingById.oidc_region || existingById.region) !== oidcRegion)
         if (
           existingById &&
+          !regionMismatch &&
           existingById.is_healthy === 1 &&
           existingById.expires_at >= cliExpiresAt &&
           existingById.expires_at > Date.now()
@@ -276,6 +296,17 @@ export async function writeToKiroCli(acc: any) {
     const rows = cliDb.prepare('SELECT key, value FROM auth_kv').all() as any[]
     const targetKey = acc.authMethod === 'idc' ? 'kirocli:odic:token' : 'kirocli:social:token'
     const row = rows.find((r) => r.key === targetKey || r.key.endsWith(targetKey))
+    if (acc.authMethod === 'idc') {
+      const deviceRegRow = rows.find(
+        (r) => typeof r?.key === 'string' && r.key.includes('device-registration')
+      )
+      const cliClientId = findClientCredsRecursive(safeJsonParse(deviceRegRow?.value)).clientId
+      if (!canWriteBackToKiroCli(acc, cliClientId)) {
+        logger.debug('Skip CLI write-back: token belongs to a different OIDC client')
+        cliDb.close()
+        return
+      }
+    }
     if (row) {
       const data = JSON.parse(row.value)
       data.access_token = acc.accessToken

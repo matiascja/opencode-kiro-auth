@@ -317,6 +317,37 @@ WHERE is_healthy = 0
 
 After that, restart OpenCode so all processes load the fork build.
 
+### Symptom: hourly `Refresh failed: Invalid token provided` + browser re-auth (IDC)
+
+Happens when the IAM Identity Center instance and the CodeWhisperer profile live in
+different regions (e.g. SSO in `us-east-2`, `KiroProfile-us-east-1`). Older builds
+stored the profile ARN region as the OIDC refresh region for accounts imported from
+`kiro-cli`, so every refresh hit the wrong `oidc.<region>.amazonaws.com/token` endpoint.
+
+This fork now:
+
+- Takes the refresh region from the `kiro-cli` token / device registration
+  (`auth.idc.region`), keeping the ARN region only for `q.<region>` service calls.
+- Re-imports rows whose stored regions are wrong on the next sync (no manual DB edit).
+- Re-authenticates immediately on deterministic refresh errors instead of retrying ~10
+  times.
+- Never writes a refresh token minted for the plugin's own OIDC client back into
+  `kiro-cli` (that broke `kiro-cli`'s own refresh and forced `kiro-cli login`).
+
+After updating, rebuild and restart **every** OpenCode process (old builds stay loaded
+in memory). If `kiro-cli whoami` reports you are logged out, run `kiro-cli login` once.
+
+### Updating this fork
+
+`dist/` is not tracked, so `git pull` alone changes nothing at runtime:
+
+```bash
+git pull
+bun install
+bun run build
+# then close and reopen all OpenCode sessions
+```
+
 ### Error: Status: 403 (AccessDeniedException / User is not authorized)
 
 If you're using **IAM Identity Center** (a custom Start URL), the Q Developer /
@@ -400,8 +431,11 @@ Edit `~/.config/opencode/kiro.json`:
 - `idc_start_url`: Default IAM Identity Center Start URL (e.g.
   `https://your-company.awsapps.com/start`). Leave unset/blank to default to AWS Builder
   ID.
-- `idc_region`: IAM Identity Center (SSO OIDC) region (`sso_region`). Defaults to
-  `us-east-1`.
+- `idc_region`: IAM Identity Center (SSO OIDC) region (`sso_region`). When unset, the
+  plugin uses the region `kiro-cli` logged in with (`auth.idc.region`), then the profile
+  ARN region, then `us-east-1`. `idc_start_url` falls back to `kiro-cli`'s
+  `auth.idc.start-url` the same way, so automatic re-auth works with an empty
+  `kiro.json`.
 - `rate_limit_retry_delay_ms`: Delay between rate limit retries (1000-60000ms).
 - `rate_limit_max_retries`: Maximum retry attempts for rate limits (0-10).
 - `max_request_iterations`: Maximum loop iterations to prevent hangs (10-1000).

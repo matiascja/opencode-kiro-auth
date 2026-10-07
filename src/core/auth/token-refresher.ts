@@ -2,6 +2,7 @@ import type { AccountRepository } from '../../infrastructure/database/account-re
 import { accessTokenExpired } from '../../kiro/auth'
 import type { AccountManager } from '../../plugin/accounts'
 import { KiroTokenRefreshError } from '../../plugin/errors'
+import { isPermanentError } from '../../plugin/health'
 import * as logger from '../../plugin/logger'
 import { refreshAccessToken } from '../../plugin/token'
 import type { KiroAuthDetails, ManagedAccount } from '../../plugin/types'
@@ -116,7 +117,15 @@ export class TokenRefresher {
         error.message.includes('Invalid grant provided') ||
         error.message.includes('Client is expired'))
     ) {
-      this.accountManager.markUnhealthy(account, error.code || error.message)
+      // Generic OAuth codes like `invalid_request` are not classified as permanent,
+      // which used to burn max_request_iterations refresh attempts (~10) before the
+      // re-auth kicked in. Persist the descriptive message when the code alone
+      // would not mark the account as permanently broken.
+      const reason =
+        !isPermanentError(error.code) && isPermanentError(error.message)
+          ? error.message
+          : error.code || error.message
+      this.accountManager.markUnhealthy(account, reason)
       await this.repository.batchSave(this.accountManager.getAccounts())
       return { account, shouldContinue: true }
     }

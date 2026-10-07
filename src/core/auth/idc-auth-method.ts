@@ -1,12 +1,15 @@
 import type { AuthOuathResult } from '@opencode-ai/plugin'
 import { execFile } from 'node:child_process'
-import { extractRegionFromArn, normalizeRegion } from '../../constants.js'
+import { extractRegionFromArn, isValidRegion, normalizeRegion } from '../../constants.js'
 import type { AccountRepository } from '../../infrastructure/database/account-repository.js'
 import { authorizeKiroIDC, pollKiroIDCToken } from '../../kiro/oauth-idc.js'
 import { createDeterministicAccountId } from '../../plugin/accounts.js'
 import * as logger from '../../plugin/logger.js'
 import { makePlaceholderEmail } from '../../plugin/sync/kiro-cli-parser.js'
-import { readActiveProfileArnFromKiroCli } from '../../plugin/sync/kiro-cli-profile.js'
+import {
+  readActiveProfileArnFromKiroCli,
+  readIdcDefaultsFromKiroCli
+} from '../../plugin/sync/kiro-cli-profile.js'
 import type { KiroRegion, ManagedAccount } from '../../plugin/types.js'
 import { fetchUsageLimits } from '../../plugin/usage.js'
 
@@ -49,6 +52,34 @@ function buildDeviceUrl(startUrl: string, userCode: string): string {
   return url.toString()
 }
 
+/**
+ * IAM Identity Center defaults: kiro.json wins, then whatever kiro-cli logged in
+ * with. Without the kiro-cli fallback, a user with an empty kiro.json gets an
+ * automatic re-auth against AWS Builder ID (no start URL) or the wrong OIDC region.
+ */
+export function resolveIdcDefaults(
+  config: { idc_start_url?: string; idc_region?: string },
+  readCli: () => { region?: string; startUrl?: string } = readIdcDefaultsFromKiroCli
+): {
+  startUrl?: string
+  region?: KiroRegion
+  startUrlSource: 'config' | 'kiro-cli' | 'none'
+  regionSource: 'config' | 'kiro-cli' | 'none'
+} {
+  const needsCli = !config.idc_start_url || !config.idc_region
+  const cli = needsCli ? readCli() : {}
+  const cliRegion = cli.region && isValidRegion(cli.region) ? cli.region : undefined
+  const configRegion =
+    config.idc_region && isValidRegion(config.idc_region) ? config.idc_region : undefined
+
+  return {
+    startUrl: config.idc_start_url || cli.startUrl,
+    region: configRegion || cliRegion,
+    startUrlSource: config.idc_start_url ? 'config' : cli.startUrl ? 'kiro-cli' : 'none',
+    regionSource: configRegion ? 'config' : cliRegion ? 'kiro-cli' : 'none'
+  }
+}
+
 export class IdcAuthMethod {
   constructor(
     private config: any,
@@ -60,19 +91,22 @@ export class IdcAuthMethod {
     const configuredServiceRegion: KiroRegion = this.config.default_region
     const invokedWithoutPrompts = !inputs || Object.keys(inputs).length === 0
 
-    const startUrl = normalizeStartUrl(inputs?.start_url || this.config.idc_start_url) || undefined
-    // For the OIDC device-code flow, prefer explicit idc_region, then fall back to
-    // the region from a pre-configured profileArn, then default_region. This ensures
-    // accounts with a eu-central-1 profileArn don't hit oidc.us-east-1.amazonaws.com.
+    const defaults = resolveIdcDefaults(this.config)
+    const startUrl = normalizeStartUrl(inputs?.start_url || defaults.startUrl) || undefined
+    // For the OIDC device-code flow, prefer explicit idc_region, then the SSO region
+    // kiro-cli logged in with, then the region from a pre-configured profileArn, then
+    // default_region. The profile ARN region is only a last resort: the SSO instance
+    // and the CodeWhisperer profile frequently live in different regions.
     const configuredProfileArn = this.config.idc_profile_arn
     const arnRegion = extractRegionFromArn(configuredProfileArn)
     const oidcRegion: KiroRegion = normalizeRegion(
-      inputs?.idc_region || this.config.idc_region || arnRegion || configuredServiceRegion
+      inputs?.idc_region || defaults.region || arnRegion || configuredServiceRegion
     )
     logger.log('IDC authorize: resolved defaults', {
       hasInputs: !!inputs && Object.keys(inputs).length > 0,
       invokedWithoutPrompts,
-      startUrlSource: inputs?.start_url ? 'inputs' : this.config.idc_start_url ? 'config' : 'none',
+      startUrlSource: inputs?.start_url ? 'inputs' : defaults.startUrlSource,
+      regionSource: inputs?.idc_region ? 'inputs' : defaults.regionSource,
       oidcRegion,
       startUrl: startUrl ? new URL(startUrl).origin : undefined
     })
