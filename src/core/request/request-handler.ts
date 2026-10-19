@@ -30,6 +30,7 @@ export class RequestHandler {
   private retryStrategy: RetryStrategy
   private reauthInFlight: Promise<boolean> | null = null
   private lastFailedReauthAt = 0
+  private syncKiroCli: () => Promise<void> = syncFromKiroCli
   private static kiroRequestQueue: Promise<void> = Promise.resolve()
 
   constructor(
@@ -374,6 +375,14 @@ export class RequestHandler {
   }
 
   private async triggerReauth(showToast: ToastFunction): Promise<boolean> {
+    // A Kiro CLI login made after this process started is only imported on
+    // plugin initialization. Re-read it first so re-login works without
+    // restarting the OpenCode service (V2 cannot run OAuth from a request).
+    if (await this.recoverFromKiroCli()) {
+      showToast('Credentials recovered from Kiro CLI sync.', 'info')
+      return true
+    }
+
     if (!this.client) return false
 
     const cooldownRemaining = REAUTH_FAILURE_COOLDOWN_MS - (Date.now() - this.lastFailedReauthAt)
@@ -432,6 +441,24 @@ export class RequestHandler {
       return true
     } catch (e) {
       logger.error('Re-auth failed', e instanceof Error ? e : new Error(String(e)))
+      return false
+    }
+  }
+
+  private async recoverFromKiroCli(): Promise<boolean> {
+    if (!this.config.auto_sync_kiro_cli) return false
+    try {
+      await this.syncKiroCli()
+      this.repository.invalidateCache()
+      const accounts = await this.repository.findAll()
+      for (const acc of accounts) {
+        this.accountManager.addAccount(acc)
+      }
+      const recovered = this.hasUsableAccount(accounts)
+      logger.log('Kiro CLI recovery before re-auth', { recovered, account_count: accounts.length })
+      return recovered
+    } catch (e) {
+      logger.warn('Kiro CLI recovery failed', { error: e instanceof Error ? e.message : String(e) })
       return false
     }
   }
