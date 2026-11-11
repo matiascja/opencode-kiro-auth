@@ -22,7 +22,7 @@ async function captureRequest(client: ReturnType<typeof createSdkClient>) {
       capturedRequest = args.request
       throw new Error('captured-request')
     },
-    { step: 'finalizeRequest', name: 'captureRequest', priority: 'high' }
+    { step: 'deserialize', name: 'captureRequest', priority: 'high' }
   )
 
   const command = new GenerateAssistantResponseCommand({
@@ -50,11 +50,39 @@ async function captureRequest(client: ReturnType<typeof createSdkClient>) {
 
   return {
     body: JSON.parse(bodyText),
-    request: { headers: capturedRequest.headers, bodyText }
+    request: {
+      hostname: capturedRequest.hostname,
+      path: capturedRequest.path,
+      headers: capturedRequest.headers,
+      bodyText
+    }
   }
 }
 
 describe('SDK client', () => {
+  test('generates through the regional Kiro runtime without changing authentication or payload', async () => {
+    clearSdkClientCache()
+
+    const client = createSdkClient(auth(), 'eu-west-1')
+    const { body, request } = await captureRequest(client)
+
+    expect(request.hostname).toBe('runtime.eu-west-1.kiro.dev')
+    expect(request.path).toBe('/generateAssistantResponse')
+    const authorization = Object.entries(request.headers).find(
+      ([name]) => name.toLowerCase() === 'authorization'
+    )?.[1]
+    expect(authorization).toBe('Bearer access-token')
+    expect(request.headers['x-amzn-kiro-agent-mode']).toBe('vibe')
+    expect(body.conversationState.currentMessage.userInputMessage).toEqual({
+      content: 'hello',
+      modelId: 'claude-opus-4.7',
+      origin: 'AI_EDITOR'
+    })
+    expect(body.additionalModelRequestFields).toBeUndefined()
+
+    clearSdkClientCache()
+  })
+
   test('uses Kiro CLI-style standard SDK retries for throttling', async () => {
     clearSdkClientCache()
 

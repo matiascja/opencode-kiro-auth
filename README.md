@@ -9,6 +9,13 @@ provider under a different id (`kiro` instead of `kiro-auth`; see "Provider id" 
 OpenCode plugin for AWS Kiro (CodeWhisperer) providing access to Claude, GPT 5.6, and
 open-weight models via Kiro's CodeWhisperer backend.
 
+Generation uses `https://runtime.<region>.kiro.dev/generateAssistantResponse`.
+The legacy `q.<region>.amazonaws.com` generation endpoint can reject requests with
+`403 FEATURE_NOT_SUPPORTED` and “This version of Kiro is no longer supported”,
+even when Kiro CLI works. This is an adapter compatibility issue, not necessarily
+an outdated CLI or invalid account. The SDK transport uses the runtime endpoint;
+the intercepted OpenAI-compatible URL and usage API are unchanged.
+
 > Fork of [`tickernelz/opencode-kiro-auth`](https://github.com/tickernelz/opencode-kiro-auth),
 > merged forward from upstream `v2.0.0`. Adds a fix for IAM Identity Center (IDC)
 > deployments whose corporate sessions force a `kiro-cli login` every few hours. Upstream

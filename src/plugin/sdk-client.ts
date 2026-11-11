@@ -43,7 +43,7 @@ export function createSdkClient(
   const token = auth.access
   const client = new CodeWhispererStreamingClient({
     region,
-    endpoint: `https://q.${region}.amazonaws.com`,
+    endpoint: `https://runtime.${region}.kiro.dev`,
     token: () => Promise.resolve({ token }),
     maxAttempts: KIRO_CLI_MAX_ATTEMPTS,
     retryMode: 'standard',
