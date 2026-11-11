@@ -53,6 +53,7 @@ export const MODEL_MAPPING: Record<string, string> = {
   // Claude Haiku
   'claude-haiku-4-5': 'claude-haiku-4.5',
   'claude-haiku-4-5-thinking': 'claude-haiku-4.5',
+  'claude-haiku-5-5': 'claude-haiku-5.5',
   // Claude Sonnet
   'claude-sonnet-4': 'claude-sonnet-4',
   'claude-sonnet-4-5': 'claude-sonnet-4.5',
@@ -88,6 +89,8 @@ export const MODEL_MAPPING: Record<string, string> = {
   'gpt-5.6-sol': 'gpt-5.6-sol',
   'gpt-5.6-terra': 'gpt-5.6-terra',
   'gpt-5.6-luna': 'gpt-5.6-luna',
+  // xAI Grok (experimental in Kiro)
+  'grok-4.7': 'grok-4.7',
   // Auto
   auto: 'auto',
   // Open weight models

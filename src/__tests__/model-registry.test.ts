@@ -86,6 +86,35 @@ describe('model registry', () => {
     })
   })
 
+  describe('November 2026 catalog additions', () => {
+    // Values from `kiro-cli chat --list-models --format json` and Kiro's model
+    // changelog. Both bill on two tiers, so the label shows short/long rates.
+    test('advertises Claude Haiku 5.5 with its 1M window and two-tier rate', () => {
+      expect(resolveKiroModel('claude-haiku-5-5')).toBe('claude-haiku-5.5')
+      expect(registry['claude-haiku-5-5']).toMatchObject({
+        name: 'Claude Haiku 5.5 (0.06x/0.3x)',
+        limit: { context: 1000000, output: 64000 }
+      })
+    })
+
+    test('advertises Grok 4.7 with its 500K window and two-tier rate', () => {
+      expect(resolveKiroModel('grok-4.7')).toBe('grok-4.7')
+      expect(registry['grok-4.7']).toMatchObject({
+        name: 'Grok 4.7 (2.7x/5.4x)',
+        limit: { context: 500000, output: 64000 }
+      })
+    })
+
+    // Effort support for both is unverified against the live API, so neither
+    // advertises reasoning variants or a -thinking companion yet.
+    test('neither advertises reasoning until verified live', () => {
+      for (const id of ['claude-haiku-5-5', 'grok-4.7']) {
+        expect(registry[id].reasoning).toBeUndefined()
+        expect(registry[`${id}-thinking`]).toBeUndefined()
+      }
+    })
+  })
+
   // The advertised limit drives OpenCode's context bar and auto-compaction, while
   // getContextWindowSize turns Kiro's contextUsagePercentage into a token count.
   // If they disagree, a model is silently truncated while the UI reports headroom.

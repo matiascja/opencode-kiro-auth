@@ -47,6 +47,7 @@ export const MODEL_CONTEXT_LIMITS: Record<string, ContextLimit> = {
 
   // Claude Haiku
   'claude-haiku-4-5': CONTEXT_200K,
+  'claude-haiku-5-5': CONTEXT_1M,
 
   // Claude Opus
   'claude-opus-4-5': CONTEXT_200K,
@@ -60,6 +61,9 @@ export const MODEL_CONTEXT_LIMITS: Record<string, ContextLimit> = {
   'gpt-5.6-sol': CONTEXT_1M,
   'gpt-5.6-terra': CONTEXT_1M,
   'gpt-5.6-luna': CONTEXT_1M,
+
+  // xAI Grok
+  'grok-4.7': { context: 500000, output: 64000 },
 
   // Open weight models
   // Kiro's catalog reports 164000 for DeepSeek 3.2, not the 128000 assumed before.

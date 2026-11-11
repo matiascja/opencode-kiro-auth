@@ -111,9 +111,10 @@ up the new `dist/`.
 Default models exposed by the plugin (all reachable as `kiro-auth/<id>`):
 
 - Claude Sonnet 4, 4.5, 4.6, 5, and 5.5.
-- Claude Haiku 4.5.
+- Claude Haiku 4.5 and 5.5.
 - Claude Opus 4.5, 4.6, 4.7, 4.8, 5, and 5.5.
 - GPT 5.6 Sol, Terra, and Luna.
+- Grok 4.7 (experimental in Kiro).
 - DeepSeek 3.2, GLM-5, MiniMax M2.5/M2.1, and Qwen3 Coder Next.
 
 Kiro spells the newest pair with a dot (`claude-opus-5.5`); the OpenCode-facing

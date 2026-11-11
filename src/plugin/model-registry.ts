@@ -77,6 +77,13 @@ const MODEL_SPECS: Record<string, ModelSpec> = {
     rate: '0.4x',
     modalities: TEXT_IMAGE
   },
+  // Two billing tiers per Kiro's changelog: up to 100K tokens at 0.06x, above at 0.3x.
+  // Effort support is unverified against the live API, so no -thinking companion.
+  'claude-haiku-5-5': {
+    name: 'Claude Haiku 5.5',
+    rate: '0.06x/0.3x',
+    modalities: TEXT_IMAGE
+  },
 
   // Claude Opus
   'claude-opus-4-5': {
@@ -142,6 +149,15 @@ const MODEL_SPECS: Record<string, ModelSpec> = {
     rate: '0.6x/1.2x',
     modalities: TEXT_ONLY,
     effort: 'native'
+  },
+
+  // xAI Grok 4.7, experimental in Kiro. Two billing tiers per Kiro's changelog: up
+  // to 200K tokens at 2.7x, above at 5.4x. Image input and effort support are
+  // unverified against the live API, so it is advertised as text-only without effort.
+  'grok-4.7': {
+    name: 'Grok 4.7',
+    rate: '2.7x/5.4x',
+    modalities: TEXT_ONLY
   },
 
   // Open weight models
