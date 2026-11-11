@@ -121,6 +121,10 @@ Kiro spells the newest pair with a dot (`claude-opus-5.5`); the OpenCode-facing
 slug uses a dash, so they are `claude-opus-5-5` and `claude-sonnet-5-5`. Opus 5.5
 bills at 2.0x, slightly below Opus 5's 2.2x, with the same 1M window.
 
+For which model to pick, see [docs/model-ranking.md](docs/model-ranking.md): a
+best-to-worst ranking with a short justification and sources. A test keeps it in sync
+with the advertised models, so adding or removing a model requires updating it.
+
 Effort-capable Claude models receive a `-thinking` companion automatically. The
 GPT 5.6 tiers carry reasoning on the base model instead, since their reasoning is
 intrinsic rather than opt-in, so there is no `gpt-5.6-sol-thinking`.
