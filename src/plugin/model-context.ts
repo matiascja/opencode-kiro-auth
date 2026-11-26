@@ -20,6 +20,7 @@ export interface ContextLimit {
 
 export const CONTEXT_200K: ContextLimit = { context: 200000, output: 64000 }
 export const CONTEXT_1M: ContextLimit = { context: 1000000, output: 64000 }
+const CONTEXT_GPT_986K: ContextLimit = { context: 986000, output: 64000 }
 
 /**
  * Values below are cross-checked against Kiro's own catalog, which the Kiro CLI
@@ -57,10 +58,12 @@ export const MODEL_CONTEXT_LIMITS: Record<string, ContextLimit> = {
   'claude-opus-5': CONTEXT_1M,
   'claude-opus-5-5': CONTEXT_1M,
 
-  // OpenAI GPT 5.6. Kiro raised the family from 272K to a 1M window on 2026-09-14.
-  'gpt-5.6-sol': CONTEXT_1M,
-  'gpt-5.6-terra': CONTEXT_1M,
-  'gpt-5.6-luna': CONTEXT_1M,
+  // OpenAI GPT. Kiro markets these as 1M windows, but its catalog reports 986000
+  // tokens (CLI 3.3.0), so the advertised limit follows the catalog.
+  'gpt-5.6-sol': CONTEXT_GPT_986K,
+  'gpt-5.6-terra': CONTEXT_GPT_986K,
+  'gpt-5.6-luna': CONTEXT_GPT_986K,
+  'gpt-6.2-astra': CONTEXT_GPT_986K,
 
   // xAI Grok
   'grok-4.7': { context: 500000, output: 64000 },

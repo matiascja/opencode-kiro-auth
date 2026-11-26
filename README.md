@@ -121,6 +121,7 @@ Default models exposed by the plugin (all reachable as `kiro-auth/<id>`):
 - Claude Haiku 4.5 and 5.5.
 - Claude Opus 4.5, 4.6, 4.7, 4.8, 5, and 5.5.
 - GPT 5.6 Sol, Terra, and Luna.
+- GPT 6.2 Astra (Enterprise preview in Kiro).
 - Grok 4.7 (experimental in Kiro).
 - DeepSeek 3.2, GLM-5, MiniMax M2.5/M2.1, and Qwen3 Coder Next.
 
@@ -169,10 +170,12 @@ while `getContextWindowSize` converts Kiro's `contextUsagePercentage` into a tok
 count. If the two disagree, a model can be truncated server-side while the client
 still believes it has headroom. A test asserts they stay equal.
 
-GPT 5.6 Sol, Terra, and Luna moved from 272K to a 1M window on 2026-09-14. Their
-credit multipliers now follow a two-tier model: requests up to 272K bill at the
-short-context rate and requests above it bill at double, which is why their
-display names carry both figures (for example `GPT 5.6 Sol (4.4x/8.8x)`).
+GPT 5.6 Sol, Terra, and Luna moved from 272K to a 1M window on 2026-09-14. Kiro
+markets that as 1M, but its catalog reports 986000 tokens for the GPT family
+(including GPT 6.2 Astra), so the plugin advertises 986000. Their credit
+multipliers follow a two-tier model: requests up to 272K bill at the short-context
+rate and requests above it bill at double, which is why their display names carry
+both figures (for example `GPT 5.6 Sol (4.4x/8.8x)`).
 
 ### Override or extend models
 

@@ -151,6 +151,15 @@ const MODEL_SPECS: Record<string, ModelSpec> = {
     effort: 'native'
   },
 
+  // OpenAI GPT 6.2 Astra, Enterprise preview in Kiro (changelog 2026-11-25): 7.2x up
+  // to 272K tokens, 14.4x above. Effort support is unverified live, so it is
+  // advertised without reasoning variants until a request confirms the schema.
+  'gpt-6.2-astra': {
+    name: 'GPT 6.2 Astra',
+    rate: '7.2x/14.4x',
+    modalities: TEXT_ONLY
+  },
+
   // xAI Grok 4.7, experimental in Kiro. Two billing tiers per Kiro's changelog: up
   // to 200K tokens at 2.7x, above at 5.4x. Image input and effort support are
   // unverified against the live API, so it is advertised as text-only without effort.

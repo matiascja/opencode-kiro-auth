@@ -63,12 +63,14 @@ describe('model registry', () => {
       }
     })
 
-    test('keep the 1M window and two-tier rate label', () => {
-      // Kiro moved the family to 1M on 2026-09-14 and split billing short/long.
-      expect(registry['gpt-5.6-sol']).toMatchObject({
-        name: 'GPT 5.6 Sol (4.4x/8.8x)',
-        limit: { context: 1000000, output: 64000 }
-      })
+    test('keep the catalog window and two-tier rate label', () => {
+      // Kiro markets the family as 1M, but its catalog reports 986000 tokens
+      // (`kiro-cli chat --list-models --format json`, CLI 3.3.0). Advertising more
+      // than the server accepts lets a session overflow before compaction.
+      for (const id of GPT_IDS) {
+        expect(registry[id].limit).toEqual({ context: 986000, output: 64000 })
+      }
+      expect(registry['gpt-5.6-sol'].name).toBe('GPT 5.6 Sol (4.4x/8.8x)')
     })
 
     test('offer the full effort ladder', () => {
@@ -105,10 +107,20 @@ describe('model registry', () => {
       })
     })
 
-    // Effort support for both is unverified against the live API, so neither
+    test('advertises GPT 6.2 Astra with its catalog window and two-tier rate', () => {
+      // Enterprise preview: 7.2x up to 272K tokens, 14.4x above (Kiro changelog
+      // 2026-11-25); the catalog reports a 986000-token window.
+      expect(resolveKiroModel('gpt-6.2-astra')).toBe('gpt-6.2-astra')
+      expect(registry['gpt-6.2-astra']).toMatchObject({
+        name: 'GPT 6.2 Astra (7.2x/14.4x)',
+        limit: { context: 986000, output: 64000 }
+      })
+    })
+
+    // Effort support is unverified against the live API, so none of these
     // advertises reasoning variants or a -thinking companion yet.
-    test('neither advertises reasoning until verified live', () => {
-      for (const id of ['claude-haiku-5-5', 'grok-4.7']) {
+    test('none advertises reasoning until verified live', () => {
+      for (const id of ['claude-haiku-5-5', 'grok-4.7', 'gpt-6.2-astra']) {
         expect(registry[id].reasoning).toBeUndefined()
         expect(registry[`${id}-thinking`]).toBeUndefined()
       }

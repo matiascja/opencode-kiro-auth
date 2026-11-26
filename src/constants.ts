@@ -89,6 +89,8 @@ export const MODEL_MAPPING: Record<string, string> = {
   'gpt-5.6-sol': 'gpt-5.6-sol',
   'gpt-5.6-terra': 'gpt-5.6-terra',
   'gpt-5.6-luna': 'gpt-5.6-luna',
+  // OpenAI GPT 6.2 (Enterprise preview in Kiro)
+  'gpt-6.2-astra': 'gpt-6.2-astra',
   // xAI Grok (experimental in Kiro)
   'grok-4.7': 'grok-4.7',
   // Auto
