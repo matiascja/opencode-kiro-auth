@@ -80,6 +80,12 @@ export const KiroConfigSchema = z.object({
   auth_server_port_range: z.number().min(1).max(100).default(10),
 
   usage_tracking_enabled: z.boolean().default(true),
+  // How often to re-read Kiro credit usage while OpenCode runs. A toast appears
+  // only when usage changed. 0 turns periodic refresh off (startup still reads it).
+  usage_refresh_interval_ms: z
+    .number()
+    .refine((value) => value === 0 || value >= 60000, 'must be 0 or at least 60000')
+    .default(600000),
   auto_sync_kiro_cli: z.boolean().default(true),
   enable_log_api_request: z.boolean().default(false),
 
@@ -119,6 +125,7 @@ export const DEFAULT_CONFIG: KiroConfig = {
   auth_server_port_start: 19847,
   auth_server_port_range: 10,
   usage_tracking_enabled: true,
+  usage_refresh_interval_ms: 600000,
   auto_sync_kiro_cli: true,
   enable_log_api_request: false,
   auto_effort_mapping: true,

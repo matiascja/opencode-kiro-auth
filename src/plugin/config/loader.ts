@@ -157,6 +157,11 @@ function applyEnvOverrides(config: KiroConfig): KiroConfig {
       config.usage_tracking_enabled
     ),
 
+    usage_refresh_interval_ms: parseNumberEnv(
+      env.KIRO_USAGE_REFRESH_INTERVAL_MS,
+      config.usage_refresh_interval_ms
+    ),
+
     enable_log_api_request: parseBooleanEnv(
       env.KIRO_ENABLE_LOG_API_REQUEST,
       config.enable_log_api_request

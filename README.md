@@ -432,6 +432,7 @@ Edit `~/.config/opencode/kiro.json`:
   "token_expiry_buffer_ms": 120000,
   "usage_sync_max_retries": 3,
   "usage_tracking_enabled": true,
+  "usage_refresh_interval_ms": 600000,
   "auto_effort_mapping": true,
   "enable_log_api_request": false
 }
@@ -460,6 +461,14 @@ Edit `~/.config/opencode/kiro.json`:
 - `auth_server_port_start`: Legacy/ignored (no local auth server).
 - `auth_server_port_range`: Legacy/ignored (no local auth server).
 - `usage_tracking_enabled`: Enable usage tracking and toast notifications.
+- `usage_refresh_interval_ms`: How often to re-read Kiro credit usage while OpenCode
+  runs (default `600000`, 10 minutes; minimum `60000`; `0` turns periodic refresh off).
+  A `Kiro usage (...)` toast appears at startup and then only when usage changed.
+  Env override: `KIRO_USAGE_REFRESH_INTERVAL_MS`.
+
+On OpenCode V2 a server plugin has no toast API, so the plugin ships a TUI entrypoint
+(`tui.ts`) that shows the toasts the server side queues, over the `kiro-toast` RPC.
+OpenCode loads it automatically from the plugin directory.
 - `auto_effort_mapping`: Automatically map OpenCode thinking budgets to Kiro effort
   levels for supported models (default: `true`).
 - `enable_log_api_request`: Enable detailed API request logging. Request logs

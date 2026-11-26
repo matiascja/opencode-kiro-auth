@@ -110,6 +110,68 @@ describe('AuthHandler.refreshUsageFromApi', () => {
     }
   })
 
+  test('periodic poll fetches every time and toasts only when usage changes', async () => {
+    const acc = makeAccount()
+    const handler = new AuthHandler(
+      { usage_tracking_enabled: true, token_expiry_buffer_ms: 300000, auto_sync_kiro_cli: false },
+      fakeRepo
+    )
+    handler.setAccountManager(makeManager(acc))
+
+    const used = [70.45, 70.45, 81.2]
+    let calls = 0
+    const original = globalThis.fetch
+    globalThis.fetch = mock(async () => {
+      const body = JSON.parse(CREDIT_RESPONSE)
+      body.usageBreakdownList[0].currentUsageWithPrecision = used[calls++]
+      return new Response(JSON.stringify(body), { status: 200 })
+    }) as any
+    const toasts: Array<[string, string]> = []
+    const toast = (message: string, variant: any) => toasts.push([message, variant])
+    try {
+      await handler.pollUsageOnce(toast)
+      await handler.pollUsageOnce(toast)
+      await handler.pollUsageOnce(toast)
+      expect(calls).toBe(3)
+      expect(toasts).toEqual([
+        ['Kiro usage (test@example.com): 70.45/10000 (1%)', 'info'],
+        ['Kiro usage (test@example.com): 81.2/10000 (1%)', 'info']
+      ])
+    } finally {
+      globalThis.fetch = original
+    }
+  })
+
+  test('usage polling runs on its interval, starts once, and stops', async () => {
+    const acc = makeAccount()
+    const handler = new AuthHandler(
+      { usage_tracking_enabled: true, token_expiry_buffer_ms: 300000, auto_sync_kiro_cli: false },
+      fakeRepo
+    )
+    handler.setAccountManager(makeManager(acc))
+
+    let calls = 0
+    const original = globalThis.fetch
+    globalThis.fetch = mock(async () => {
+      calls++
+      return new Response(CREDIT_RESPONSE, { status: 200 })
+    }) as any
+    try {
+      handler.startUsagePolling(20, () => {})
+      handler.startUsagePolling(20, () => {}) // second start is a no-op
+      await new Promise((resolve) => setTimeout(resolve, 75))
+      handler.stopUsagePolling()
+      const afterStop = calls
+      expect(afterStop).toBeGreaterThanOrEqual(2)
+      expect(afterStop).toBeLessThanOrEqual(4)
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      expect(calls).toBe(afterStop)
+    } finally {
+      handler.stopUsagePolling()
+      globalThis.fetch = original
+    }
+  })
+
   test('is a one-time guard (skips the second call)', async () => {
     const acc = makeAccount()
     const handler = new AuthHandler(

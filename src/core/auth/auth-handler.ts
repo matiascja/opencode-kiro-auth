@@ -12,6 +12,9 @@ type ToastFunction = (message: string, variant: 'info' | 'warning' | 'success' |
 export class AuthHandler {
   private accountManager?: any
   private startupUsageFetched = false
+  private usagePollTimer?: ReturnType<typeof setInterval>
+  // Last summary toasted per account, so periodic refreshes only toast on change.
+  private lastToastedUsage = new Map<string, string>()
 
   constructor(
     private config: any,
@@ -45,6 +48,7 @@ export class AuthHandler {
         })
       }
       this.logUsageSummary(showToast)
+      this.startUsagePolling(this.config.usage_refresh_interval_ms ?? 0, showToast)
     })()
   }
 
@@ -52,6 +56,53 @@ export class AuthHandler {
     if (!this.accountManager || this.config.usage_tracking_enabled === false) return
     if (this.startupUsageFetched) return
     this.startupUsageFetched = true
+    await this.fetchUsageForHealthyAccounts(showToast)
+  }
+
+  /**
+   * Re-read usage from the API and toast each account whose summary changed since
+   * the last toast. Unlike refreshUsageFromApi, this has no one-shot guard, so it
+   * backs the periodic refresh.
+   */
+  async pollUsageOnce(showToast?: ToastFunction): Promise<void> {
+    await this.fetchUsageForHealthyAccounts(showToast)
+    for (const { message, variant } of this.usageSummaries()) {
+      if (this.lastToastedUsage.get(message.key) === message.text) continue
+      this.lastToastedUsage.set(message.key, message.text)
+      logger.log(message.text)
+      showToast?.(message.text, variant)
+    }
+  }
+
+  startUsagePolling(intervalMs: number, showToast?: ToastFunction): void {
+    if (this.usagePollTimer || intervalMs <= 0) return
+    if (!this.accountManager || this.config.usage_tracking_enabled === false) return
+    let inFlight = false
+    this.usagePollTimer = setInterval(() => {
+      // Skip a tick rather than overlap a slow refresh (token refresh + fetch).
+      if (inFlight) return
+      inFlight = true
+      this.pollUsageOnce(showToast)
+        .catch((e) =>
+          logger.warn('Periodic usage refresh failed', {
+            error: e instanceof Error ? e.message : String(e)
+          })
+        )
+        .finally(() => {
+          inFlight = false
+        })
+    }, intervalMs)
+    // Never keep the OpenCode process alive just to poll usage.
+    this.usagePollTimer.unref?.()
+  }
+
+  stopUsagePolling(): void {
+    if (this.usagePollTimer) clearInterval(this.usagePollTimer)
+    this.usagePollTimer = undefined
+  }
+
+  private async fetchUsageForHealthyAccounts(showToast?: ToastFunction): Promise<void> {
+    if (!this.accountManager || this.config.usage_tracking_enabled === false) return
 
     const { syncFromKiroCli } = await import('../../plugin/sync/kiro-cli.js')
     const tokenRefresher = new TokenRefresher(
@@ -74,7 +125,7 @@ export class AuthHandler {
         if (!usable.isHealthy) continue
         await usageTracker.syncNow(usable, this.accountManager.toAuthDetails(usable))
       } catch (e) {
-        logger.warn('Startup usage fetch failed; keeping stored value', {
+        logger.warn('Usage fetch failed; keeping stored value', {
           email: acc.email,
           error: e instanceof Error ? e.message : String(e)
         })
@@ -82,25 +133,38 @@ export class AuthHandler {
     }
   }
 
-  private logUsageSummary(showToast?: ToastFunction): void {
-    if (!this.accountManager) return
-    const accounts = this.accountManager.getAccounts()
-    if (!accounts.length) return
-
-    for (const acc of accounts) {
+  private usageSummaries(): Array<{
+    message: { key: string; text: string }
+    variant: 'info' | 'warning'
+  }> {
+    if (!this.accountManager) return []
+    const summaries: Array<{
+      message: { key: string; text: string }
+      variant: 'info' | 'warning'
+    }> = []
+    for (const acc of this.accountManager.getAccounts()) {
       const { used, limit, pct } = summarizeUsage(acc.usedCount ?? 0, acc.limitCount ?? 0)
+      const key = acc.id ?? acc.email
       if (limit > 0) {
-        const msg = `Kiro usage (${acc.email}): ${used}/${limit} (${pct}%)`
-        logger.log(msg)
-        if (showToast) {
-          const variant = pct >= 90 ? 'warning' : 'info'
-          setTimeout(() => showToast(msg, variant), 3000)
-        }
+        summaries.push({
+          message: { key, text: `Kiro usage (${acc.email}): ${used}/${limit} (${pct}%)` },
+          variant: pct >= 90 ? 'warning' : 'info'
+        })
       } else if (used > 0) {
-        const msg = `Kiro usage (${acc.email}): ${used} requests used`
-        logger.log(msg)
-        if (showToast) setTimeout(() => showToast(msg, 'info'), 3000)
+        summaries.push({
+          message: { key, text: `Kiro usage (${acc.email}): ${used} requests used` },
+          variant: 'info'
+        })
       }
+    }
+    return summaries
+  }
+
+  private logUsageSummary(showToast?: ToastFunction): void {
+    for (const { message, variant } of this.usageSummaries()) {
+      this.lastToastedUsage.set(message.key, message.text)
+      logger.log(message.text)
+      if (showToast) setTimeout(() => showToast(message.text, variant), 3000)
     }
   }
 

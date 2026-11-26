@@ -4,6 +4,7 @@ import { KIRO_CONSTANTS } from './constants.js'
 import { KiroOAuthPlugin } from './plugin.js'
 import { loadConfig } from './plugin/config/index.js'
 import { buildModelRegistry } from './plugin/model-registry.js'
+import { createToastQueue, registerToastRpc } from './plugin/toast-relay.js'
 
 const PROVIDER_ID = Provider.ID.make('kiro-auth')
 
@@ -154,10 +155,23 @@ export async function setupKiroV2(ctx: Plugin.Context) {
     '{{region}}',
     config.default_region || 'us-east-1'
   )
+  // A V2 server plugin cannot show toasts, so they are queued and the TUI
+  // entrypoint (src/tui.ts) drains them over RPC.
+  const toasts = createToastQueue()
+  // Toasts are a convenience: if this host cannot register the RPC, keep the
+  // provider working and fall back to console-only messages.
+  await registerToastRpc(ctx as any, toasts).catch((e) =>
+    console.log(`[kiro-auth] toast relay unavailable: ${e instanceof Error ? e.message : e}`)
+  )
   const hooks = await KiroOAuthPlugin({
     directory,
     client: {
-      tui: { showToast: async ({ body }: any) => console.log(`[kiro-auth] ${body.message}`) },
+      tui: {
+        showToast: async ({ body }: any) => {
+          console.log(`[kiro-auth] ${body.message}`)
+          toasts.enqueue(body.message, body.variant ?? 'info')
+        }
+      },
       // V1 silently started OAuth from a model request. V2 must expose its URL
       // in the connection UI rather than open a hidden server-side login flow.
       provider: {
